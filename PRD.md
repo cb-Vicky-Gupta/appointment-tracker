@@ -1,23 +1,199 @@
 # PG Appointment Tracker — Product Requirements Document
 
-Status: **Planning complete, build not started.** Implement in phases per Section 9 —
-do not build everything at once.
+Status: **Planning complete, build not started.**
+
+This PRD is split into **Phases** (build one at a time, in order) and a **Reference**
+appendix (schema, API surface, design notes — pulled into whichever phase needs it). Tell me
+which phase to start and I'll implement only that slice.
 
 ---
 
-## 0. What this app is
+## Phased Implementation Plan
 
-A web app for medical college PG students/residents to manage their own patient
-appointment log. Each PG user has their own private list of patients. They can scan a
-prescription photo to auto-fill a form, and every time the same patient returns, a **new
-appointment record** is added under that patient — history is never overwritten.
+### Phase 1 — Data layer ✅ done
+**Goal:** a working Postgres DB reachable from the app, with the full schema migrated.
+- Add Prisma, write `prisma/schema.prisma` (see Reference A).
+- `npx prisma migrate dev` — confirm tables exist.
+- `lib/prisma.ts` — Prisma client singleton.
 
-Built to be reused later as a mobile app, so **all business logic lives behind a REST API**,
-never directly in page components.
+**Deviation from the original plan:** using **Prisma 7**, not the version the PRD assumed —
+connection URLs now live in `prisma.config.ts` (not `schema.prisma`), and the client requires
+an explicit driver adapter (`@prisma/adapter-pg` wrapping a `pg.Pool`); see `lib/prisma.ts`.
+Generated client output moved to `lib/generated/prisma` (gitignored) instead of the default
+`app/generated/prisma`, to keep it next to `lib/prisma.ts`.
+
+**Deviation on hosting:** running local Postgres via **Docker** (`docker-compose.yml`,
+`docker compose up -d`) instead of Neon for now, per your call — swap `DATABASE_URL` in
+`.env` for the real Neon connection string later; nothing else changes.
+
+**Done when:** migration runs clean, tables exist. ✅ Verified — `User`, `RefreshToken`,
+`Patient`, `Appointment` tables confirmed via `psql \dt` against the Dockerized DB.
+
+### Phase 2 — Auth API ✅ done
+**Goal:** signup/login/refresh/logout work end-to-end via curl/Postman, no UI yet.
+- `lib/auth.ts`: JWT sign/verify with `jose`, password hashing with `bcryptjs`,
+  refresh-token issuance/lookup/revocation (SHA-256 hash, not bcrypt — see file comments),
+  `getUserFromRequest(req)` (Authorization header first, cookie second — Reference B).
+- Routes: `POST /api/auth/signup`, `/login`, `/refresh`, `/logout` (Reference B).
+- `GET /api/me` added early (read-only) as the protected stub route to smoke-test the flow;
+  `PATCH /api/me` still lands in Phase 9.
+- Zod schemas for signup/login bodies in `lib/validation.ts`.
+- `lib/api-response.ts` — shared JSON error helpers.
+
+**Done when:** ✅ Verified via curl — signup issues tokens; `/api/me` returns 401 with no
+token and 200 with a valid access token; duplicate signup → 409; wrong password → 401;
+refresh issues a new access token; logout revokes the refresh token row (confirmed in
+Postgres) and a second refresh with the same token then returns 401. `passwordHash` is never
+present in any API response (confirmed) and is bcrypt-hashed at rest (confirmed via `psql`).
+
+### Phase 3 — Login/signup UI ✅ done
+**Goal:** real pages wired to the Phase 2 API; no theme/design polish yet.
+- `lib/auth-context.tsx` — `AuthProvider`/`useAuth()`: access token in a ref (memory-only,
+  never localStorage/cookie), `user` + `status` in React state, plus `authFetch()` — a fetch
+  wrapper that attaches the token and retries once via silent refresh on a 401. Later phases'
+  API calls (patients, dashboard, profile) should go through `authFetch`, not raw `fetch`.
+  Session restore on mount calls `POST /api/auth/refresh` (cookie-only) → `GET /api/me`.
+- `app/(auth)/login/page.tsx`, `app/(auth)/signup/page.tsx` — plain forms, no design pass yet.
+- `app/(dashboard)/dashboard/page.tsx` — placeholder, just proves the session works.
+- `app/page.tsx` — redirects to `/dashboard` or `/login` once auth status resolves.
+- `app/layout.tsx` wraps the app in `AuthProvider`.
+
+**Done when:** ✅ Verified. `next build` and `next lint`/`tsc --noEmit` are clean, all routes
+render. Confirmed via curl (simulating exactly what the browser does): signup sets the
+httpOnly refresh cookie → a cookie-only `POST /api/auth/refresh` (no body token, the same
+call `AuthProvider` makes on mount/reload) returns a fresh access token → logout clears the
+cookie → a subsequent cookie-only refresh fails. Manual browser click-through (signup → land
+on dashboard → reload stays logged in → logout → redirected to `/login`) still recommended
+before moving on, since this was verified via curl/build rather than a live browser session.
+
+### Phase 4 — Theme system ✅ done
+**Goal:** gender + mode drive the whole app's look via one attribute.
+- `lib/theme-context.tsx` — `ThemeProvider`/`useTheme()`. `themeMode` is a **derived** value
+  (local override > signed-in user's saved `themeMode` > system preference), not effect+
+  setState — the only real effect writes the resolved `data-theme` attribute to `<html>`.
+- `app/globals.css` — full CSS variable set for `other|male|female` × `light|dark` (6 palettes;
+  `other` is the neutral pre-login/`OTHER`-gender default, not in the original PRD table but
+  needed since `Gender` includes `OTHER`). Mapped to Tailwind utilities via `@theme inline`
+  (`bg-bg`, `text-text`, `bg-primary`, etc.) — no hardcoded Tailwind colors anywhere.
+- `app/layout.tsx` sets a static `data-theme="other-light"` on `<html>` (no inline
+  pre-hydration script was needed/possible here: gender isn't known until the client-side
+  session check resolves, and every page already blocks on a loading state until then, so
+  there's no flash-of-wrong-theme to prevent).
+- Manual light/dark toggle (`components/ui/ThemeToggle.tsx`) is local-only (localStorage) —
+  explicitly deferred to Phase 9's `PATCH /api/me`, per the original plan.
+
+**Deviation — pulled design-pass work forward:** you asked for the UI to look aesthetic now
+rather than waiting for Phase 10, so this phase also shipped: a Fraunces/Geist type pairing,
+an asymmetric two-pane `AuthShell` for login/signup (`components/layout/AuthShell.tsx`), a
+Lucide-icon brand mark (`components/icons/PulseMark.tsx`, per your instruction to use Lucide
+rather than hand-drawn SVGs), a custom pulsing-heartbeat `Spinner` (not `animate-spin`), a
+matching custom favicon (`app/icon.svg`), and `cursor-pointer` on every interactive button.
+Phase 10 still remains for whatever's left (sidebar dashboard shell, further micro-copy pass).
+
+**Done when:** ✅ Verified via curl — signup as `MALE`/`FEMALE`/`OTHER` round-trips the right
+`gender`/`themeMode`, which is exactly what `ThemeProvider` keys off. `tsc --noEmit`, `eslint`,
+and `next build` all clean. Manual browser check (does the toggle instantly repaint every
+themed surface with no flash) is still recommended, since this was verified via curl/build.
+
+### Phase 5 — Patient & appointment API ✅ done
+**Goal:** the core domain logic, fully testable without UI.
+- `lib/patients.ts` — `findOwnedPatient`/`findOwnedAppointment`: the only two places that look
+  up a Patient/Appointment by bare id, both scoped to `userId`. Route handlers go through
+  these rather than calling `prisma.patient.findUnique` directly (Reference D's convention,
+  made structural instead of just a rule to remember).
+- `GET /api/patients?search=&page=` — matches `opdNo` by prefix and `name` by
+  case-insensitive contains; returns `visitCount`/`lastVisitAt` per patient (from
+  `_count.appointments` + latest `appointments` row, not fetch-all-and-count-in-JS).
+- `POST /api/patients` — creates the patient **and** its first appointment together in one
+  transaction (Reference C: "create patient (first visit)" — there's no such thing as a
+  patient with zero visits here).
+- `GET /api/patients/:id` — patient + full appointment history, newest first. 404 (never 403)
+  whether the patient doesn't exist or just belongs to someone else.
+- `POST /api/patients/:id/appointments` — always `appointment.create`, never `update`; also
+  touches the patient's `updatedAt` (an empty `update()` call — Prisma bumps `@updatedAt` on
+  every `update` invocation regardless of whether data changed) so patient lists sort by
+  most-recently-active without a separate query.
+- `GET /api/appointments/:id` — scoped through `patient.userId`.
+
+**Reference J resolved:** used the existing `GET /api/patients?search=` endpoint itself as the
+match-suggestion mechanism — no separate "match" endpoint needed. The client flow (Phase 6/7)
+is: search by OPD no/name first, show candidates, let the resident explicitly choose "add to
+this patient" (`POST .../appointments`) or "this is a new patient" (`POST /api/patients`).
+Nothing on the server ever auto-merges into an existing patient.
+
+**Done when:** ✅ Verified via curl with two real signed-up users, A and B: B's search for A's
+OPD number returns empty, `GET`/`POST .../appointments` on A's patient both 404 for B, and A
+adding a second appointment produces 2 intact appointment rows (not 1 overwritten). Validation
+errors (400) and missing-auth (401) also confirmed. `tsc --noEmit`, `eslint`, and `next build`
+all clean. Test users/patients cleaned up afterward.
+
+### Phase 6 — Patient list/search + detail UI ✅ done
+**Goal:** the PG user can browse and search their own patients and see full history.
+- Installed **TanStack Query** (per Reference A's original tech-stack choice, not used yet in
+  earlier phases) — `lib/query-client.tsx` + `lib/hooks/use-patients.ts` /
+  `use-patient-detail.ts`. `lib/hooks/use-debounced-value.ts` debounces the search inputs.
+- `lib/use-require-auth.ts` + `components/layout/AppHeader.tsx` — extracted the
+  loading/redirect guard and header out of the dashboard page (Phase 3/4) so `/patients` and
+  `/patients/:id` don't duplicate them; `dashboard/page.tsx` now uses both too.
+- `app/(dashboard)/patients/page.tsx` — search box (name or OPD no.) → `GET
+  /api/patients?search=&page=`, `PatientCard` result cards (name, OPD no., last visit date,
+  visit count), pagination, empty state.
+- `app/(dashboard)/patients/[id]/page.tsx` — patient header fields + full appointment history
+  via `AppointmentEntry` (newest first, OCR raw text collapsed behind a toggle where present).
+
+**Deviation — pagination/search hardening (your mid-phase request):** the appointment history
+nested under a patient was originally going to return everything unpaginated. Since a
+long-tenured patient can accumulate dozens of visits, `GET /api/patients/:id` now also takes
+`?page=&search=` (search matches free text in `notes`) and returns `appointmentsMeta`; the
+detail page got its own search box + pagination controls for the history list, mirroring the
+patient list. Verified up to 26 appointments on one patient: page 1 returns 20, page 2 returns
+the remaining 6, and `?search=` correctly isolates a single matching visit.
+
+**Done when:** ✅ Verified via curl — partial name search ("ramesh" → "Ramesh Kumar") and OPD
+prefix search ("40" → "4021") both return the right patient; patient detail returns every
+appointment (paginated, not just the latest). `tsc --noEmit`, `eslint`, `next build` all clean.
+Test data cleaned up afterward. Manual browser click-through still recommended, since this
+was verified via curl/build rather than a live session.
+
+### Phase 7 — Prescription OCR → autofill
+**Goal:** scan a prescription photo, get an editable pre-filled appointment form.
+- Image capture/upload (`<input capture>` for mobile camera), image stays client-side only.
+- Tesseract.js in a Web Worker; regex extraction for OPD no, phone, date, age
+  (Reference E, patterns in item 3).
+- "Scanned — please verify details" messaging; every field editable.
+- Wire into Phase 5's create-or-append flow (match suggestion, not auto-merge) and Phase 6's
+  UI.
+**Done when:** a printed OPD slip photo populates most fields correctly; a messy handwritten
+one still lets you fill in manually without the flow breaking; the image itself is never
+sent to the server (verify in Network tab).
+
+### Phase 8 — Dashboard stats
+**Goal:** at-a-glance numbers on login.
+- `GET /api/dashboard/stats` — single Prisma aggregate query (not fetch-all-and-count-in-JS),
+  scoped to `userId`.
+- Cards: total patients, total appointments, today's appointments, this week's appointments.
+**Done when:** the numbers match manual counts in Prisma Studio for a test user, and stay
+correct after adding a patient/appointment.
+
+### Phase 9 — Profile page
+**Goal:** user can edit their own profile, including the field that drives theme.
+- `GET/PATCH /api/me` (name, gender, themeMode).
+- Profile UI: editable name, gender selector (flips theme), persisted light/dark toggle.
+**Done when:** changing gender in the profile page changes the theme app-wide and survives a
+reload (i.e. it's actually persisted via `PATCH /api/me`, not just local state).
+
+### Phase 10 — Design pass
+**Goal:** stop looking like a generic AI-generated SaaS template (Reference G).
+- Typography pairing (non-Inter), asymmetric auth layout, sidebar dashboard, non-default
+  blue/pink hues, custom favicon/spinner/icons, real micro-copy.
+**Done when:** every screen reads var(--primary) etc. (no hardcoded Tailwind colors), and a
+fresh look confirms none of the "generic AI SaaS" tells from Reference G remain.
 
 ---
 
-## 1. Tech stack (all free-tier)
+## Reference
+
+### A. Tech stack (all free-tier)
 
 | Layer | Choice | Why |
 |---|---|---|
@@ -36,34 +212,7 @@ Everything above has a genuinely free tier at reasonable scale (a few hundred us
 image volume). Flag to revisit if patient volume gets large: Neon free tier caps storage at
 0.5GB and compute hours — fine for a student project, not for a real hospital system.
 
----
-
-## 2. Why "OCR scan a prescription" needs a caveat
-
-Prescriptions are usually **handwritten**. Tesseract.js is good at printed text (a
-prescription header/footer template, a printed OPD slip, a computer-generated report) but
-weak at doctor handwriting. Design the feature as:
-
-1. User selects/photographs the prescription — stays entirely in the browser, in memory
-   (e.g. a `File`/`Blob` object or an `<img>` preview), never sent to the server.
-2. Tesseract.js runs OCR **client-side** (no server cost, no privacy issue sending images to
-   a third-party OCR API, and no image ever leaves the device).
-3. Extracted raw text is pattern-matched (regex) for likely fields: OPD No
-   (`OPD\s*[:#-]?\s*(\d+)`), phone (10-digit pattern), date
-   (`\d{1,2}[/-]\d{1,2}[/-]\d{2,4}`), age (`\b\d{1,3}\s*(yrs?|years?|y)\b`).
-4. Pre-fill the form with whatever matched; **leave everything editable** — this is
-   convenience autofill, not a guarantee. Say this explicitly in the UI ("Scanned — please
-   verify details") so it doesn't feel broken when handwriting isn't recognized.
-5. On submit, only the confirmed **text fields** are sent to the API — the image object
-   itself is simply dropped/garbage-collected once OCR has run. Nothing binary ever touches
-   Postgres, Vercel, or any storage bucket.
-
-If budget ever exists, Google Cloud Vision's handwriting detection is meaningfully better,
-but that's a paid API past a small free quota.
-
----
-
-## 3. Database schema (Prisma)
+#### Database schema (Prisma) — used in Phase 1
 
 ```prisma
 // schema.prisma
@@ -152,9 +301,7 @@ Key design point ("same patient comes again → add next appointment, don't repl
 user, and appointment creation always does `appointments.create(...)`, never `update`. If no
 existing patient matches, create a new `Patient` first, then its first `Appointment`.
 
----
-
-## 4. Auth design (works for web now, app later)
+### B. Auth design — used in Phase 2/3
 
 - `POST /api/auth/signup` — body: `{ name, email, password, gender }`. Hash password with
   bcryptjs, create user, return `{ accessToken, refreshToken, user }`.
@@ -175,9 +322,11 @@ helper in `lib/auth.ts` — this is the one function that has to work identicall
 cookie-based web calls and header-based mobile calls, so write it to check the
 `Authorization` header first, cookie second.
 
----
+**Env var:** `JWT_ACCESS_SECRET` (HS256 signing secret for access tokens) — a local dev value
+was generated and written to `.env` (gitignored); generate your own before deploying, e.g.
+`node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
 
-## 5. REST API surface (design this before any UI)
+### C. REST API surface — used in Phases 2, 5, 8, 9
 
 ```
 POST   /api/auth/signup
@@ -206,40 +355,37 @@ GET    /api/dashboard/stats         -> { totalPatients, totalAppointments, today
 Every list/detail endpoint filters by the authenticated `userId` — never trust a
 client-supplied user id.
 
----
+### D. Per-user data isolation — used in Phase 5 onward
 
-## 6. Feature-by-feature build notes
-
-### Signup/Login
-Standard email+password. Ask gender at signup (required, since it drives theme). Store
-`gender` on `User`.
-
-### Prescription upload → autofill → appointment form
-1. Upload image (drag-drop or camera capture on mobile browsers via `<input capture>`).
-2. Run Tesseract.js in a Web Worker so the UI doesn't freeze.
-3. Regex-extract candidate fields (see Section 2).
-4. Populate a form with: Name, Age, OPD No, Date, Address, Phone, Email — all editable.
-5. On submit: check if a `Patient` with the same `opdNo` (or name+phone match) already
-   exists for this user.
-   - If yes → `POST /api/patients/:id/appointments` (append).
-   - If no → `POST /api/patients` then create its first appointment.
-
-### Search
-Single search box hitting `GET /api/patients?search=`, matching `opdNo` (exact/prefix) OR
-`name` (case-insensitive `contains`, use Postgres `ILIKE` via Prisma
-`{ contains, mode: 'insensitive' }`). Show results as cards with patient name, OPD no, last
-visit date, and total visit count; tapping opens full appointment history for that patient.
-
-### Per-user data isolation
 Every Prisma query for patients/appointments includes `where: { userId: currentUser.id }`
 (or via the nested relation). Convention: **never write a `patient` or `appointment` query
 without a userId filter**, even internal helper functions.
 
-### Profile section
-Editable name, gender (changing this flips the theme), and a manual light/dark toggle that
-overrides the system preference but keeps the gender hue.
+### E. OCR design & caveat — used in Phase 7
 
-### Gender-based theme (blue/pink, each with dark+light)
+Prescriptions are usually **handwritten**. Tesseract.js is good at printed text (a
+prescription header/footer template, a printed OPD slip, a computer-generated report) but
+weak at doctor handwriting. Design the feature as:
+
+1. User selects/photographs the prescription — stays entirely in the browser, in memory
+   (e.g. a `File`/`Blob` object or an `<img>` preview), never sent to the server.
+2. Tesseract.js runs OCR **client-side** (no server cost, no privacy issue sending images to
+   a third-party OCR API, and no image ever leaves the device).
+3. Extracted raw text is pattern-matched (regex) for likely fields: OPD No
+   (`OPD\s*[:#-]?\s*(\d+)`), phone (10-digit pattern), date
+   (`\d{1,2}[/-]\d{1,2}[/-]\d{2,4}`), age (`\b\d{1,3}\s*(yrs?|years?|y)\b`).
+4. Pre-fill the form with whatever matched; **leave everything editable** — this is
+   convenience autofill, not a guarantee. Say this explicitly in the UI ("Scanned — please
+   verify details") so it doesn't feel broken when handwriting isn't recognized.
+5. On submit, only the confirmed **text fields** are sent to the API — the image object
+   itself is simply dropped/garbage-collected once OCR has run. Nothing binary ever touches
+   Postgres, Vercel, or any storage bucket.
+
+If budget ever exists, Google Cloud Vision's handwriting detection is meaningfully better,
+but that's a paid API past a small free quota.
+
+### F. Gender-based theme — used in Phase 4/9/10
+
 Implement as CSS custom properties, switched by a `data-theme` attribute on `<html>`:
 
 ```css
@@ -254,14 +400,7 @@ Implement as CSS custom properties, switched by a `data-theme` attribute on `<ht
 wrong theme. Every component should reference `var(--primary)` etc., never a hardcoded
 Tailwind color, so the whole app repaints from one attribute change.
 
-### Dashboard
-Cards for: total patients, total appointments logged, today's appointments, this week's
-appointments. Pull from `GET /api/dashboard/stats`. Keep it a single Prisma aggregate query
-(`count`, filtered by date ranges) rather than fetching all rows and counting in JS.
-
----
-
-## 7. Making it not look AI-generated
+### G. Making it not look AI-generated — used in Phase 10
 
 The single biggest tell is the "generic AI SaaS" look: centered hero, `indigo-600` to
 `violet-600` gradient button, Inter font, rounded-2xl cards with a soft shadow, a 3-column
@@ -286,9 +425,7 @@ feature grid with an icon-circle-title-paragraph pattern. Avoid all of that spec
 None of this changes functionality — it's purely CSS/asset choices, so build features first,
 then do a design pass.
 
----
-
-## 8. Suggested folder structure
+### H. Folder structure
 
 ```
 /app
@@ -317,24 +454,17 @@ then do a design pass.
   schema.prisma
 ```
 
----
+### I. What this app is (product summary)
 
-## 9. Build order (do it in this order, not all at once)
+A web app for medical college PG students/residents to manage their own patient
+appointment log. Each PG user has their own private list of patients. They can scan a
+prescription photo to auto-fill a form, and every time the same patient returns, a **new
+appointment record** is added under that patient — history is never overwritten.
 
-1. Prisma schema + Neon DB connection + `npx prisma migrate dev`.
-2. Auth API routes + JWT helper, test with curl/Postman before touching UI.
-3. Login/signup pages wired to auth API.
-4. Theme system (gender + mode → CSS variables), verify it switches correctly.
-5. Patient + appointment API routes (create, list/search, detail, add-appointment).
-6. Patient list/search UI + patient detail (appointment history) UI.
-7. Prescription upload + Tesseract OCR + autofill form, wired into the create/append flow.
-8. Dashboard stats endpoint + UI cards.
-9. Profile page.
-10. Design pass per Section 7.
+Built to be reused later as a mobile app, so **all business logic lives behind a REST API**,
+never directly in page components.
 
----
-
-## 10. Open decision — flagged, not yet resolved
+### J. Open decision — flagged, not yet resolved (blocks Phase 5)
 
 Should "same patient comes again" be matched automatically (by OPD no) or should the PG
 student always search first and explicitly pick "add appointment to this existing patient"
@@ -342,5 +472,5 @@ vs "new patient"? Auto-matching on OPD no is convenient but risky if OPD numbers
 reused/mistyped.
 
 **Recommendation:** make the match a **suggestion** ("Found existing patient Ramesh Kumar,
-OPD 4021 — add appointment to this patient? Y/N") rather than a silent merge. This should be
-decided/confirmed before implementing Step 7 of the build order (the search/append flow).
+OPD 4021 — add appointment to this patient? Y/N") rather than a silent merge. Confirm this
+before implementing Phase 5's create-or-append logic.

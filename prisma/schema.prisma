@@ -1,0 +1,84 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+//
+// Prisma 7: the connection URL lives in prisma.config.ts, not here.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  gender       Gender   @default(OTHER)
+  themeMode    String   @default("light") // "light" | "dark"
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  patients      Patient[]
+  refreshTokens RefreshToken[]
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// A Patient belongs to exactly one PG user (their own patient list).
+// Same real-world patient visiting a different PG user again = a separate Patient row
+// for that PG user, by design — each user's list is independent.
+model Patient {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name    String
+  age     Int?
+  opdNo   String
+  phone   String?
+  email   String?
+  address String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appointments Appointment[]
+
+  @@index([userId, opdNo])
+  @@index([userId, name])
+}
+
+// Every visit = a new Appointment row. Nothing here overwrites a previous one.
+model Appointment {
+  id        String  @id @default(cuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  appointmentDate DateTime
+  ocrRawText      String? // optional: keep raw OCR text for later debugging/re-parsing
+  // (the prescription image itself is never stored anywhere)
+  notes           String?
+
+  createdAt DateTime @default(now())
+
+  @@index([patientId])
+}

@@ -1,26 +1,143 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+ * Gender-based theme system (PRD Reference F).
+ * `data-theme` on <html> is `${genderKey}-${themeMode}`, set by ThemeProvider
+ * (lib/theme-context.tsx). Every color below is a CSS variable — components
+ * reference `bg-surface`, `text-text`, `bg-primary`, etc. (mapped through the
+ * `@theme inline` block), never a raw Tailwind color. "other-light" is also
+ * the default before a session resolves (see app/layout.tsx).
+ * ------------------------------------------------------------------------ */
+
+:root[data-theme="other-light"],
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #f6f7f5;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --primary: #0f766e;
+  --primary-contrast: #ffffff;
+  --text: #101a17;
+  --muted: #5b6b66;
+  --border: #dbe3e0;
+  --accent-soft: #ccebe6;
+  --danger: #b91c1c;
+}
+
+:root[data-theme="other-dark"] {
+  --bg: #0a1210;
+  --surface: #101a17;
+  --surface-raised: #142521;
+  --primary: #2dd4bf;
+  --primary-contrast: #06231f;
+  --text: #e7fbf6;
+  --muted: #8fa7a1;
+  --border: #1f3530;
+  --accent-soft: #113531;
+  --danger: #f87171;
+}
+
+:root[data-theme="male-light"] {
+  --bg: #f4f8ff;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --primary: #1d4ed8;
+  --primary-contrast: #ffffff;
+  --text: #0f172a;
+  --muted: #5c6b8a;
+  --border: #dbe3f5;
+  --accent-soft: #dbe7ff;
+  --danger: #b91c1c;
+}
+
+:root[data-theme="male-dark"] {
+  --bg: #0a1220;
+  --surface: #101a2e;
+  --surface-raised: #16233c;
+  --primary: #5b8def;
+  --primary-contrast: #061225;
+  --text: #e6ecfb;
+  --muted: #8fa0c7;
+  --border: #223259;
+  --accent-soft: #16264a;
+  --danger: #f87171;
+}
+
+:root[data-theme="female-light"] {
+  --bg: #fff5f8;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --primary: #db2777;
+  --primary-contrast: #ffffff;
+  --text: #1a0e14;
+  --muted: #8a5c6f;
+  --border: #f5dbe6;
+  --accent-soft: #fbe1ec;
+  --danger: #b91c1c;
+}
+
+:root[data-theme="female-dark"] {
+  --bg: #1a0e14;
+  --surface: #24141d;
+  --surface-raised: #2c1824;
+  --primary: #f472b6;
+  --primary-contrast: #250b17;
+  --text: #fbe6ee;
+  --muted: #c78ba3;
+  --border: #3c2230;
+  --accent-soft: #35182a;
+  --danger: #f87171;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-primary: var(--primary);
+  --color-primary-contrast: var(--primary-contrast);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-display: var(--font-fraunces);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display), Georgia, serif;
+  letter-spacing: -0.01em;
+}
+
+/* Custom loading animation (components/ui/Spinner.tsx) — a pulsing heartbeat
+ * icon, instead of the default Tailwind `animate-spin` circle. */
+.pulse-beat {
+  animation: pulse-beat 1.3s ease-in-out infinite;
+}
+
+@keyframes pulse-beat {
+  0%,
+  100% {
+    transform: scale(0.9);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+
+/* Decorative dot-grid used behind the auth panel (components/layout/AuthShell.tsx). */
+.dot-grid {
+  background-image: radial-gradient(currentColor 1.4px, transparent 1.4px);
+  background-size: 28px 28px;
 }

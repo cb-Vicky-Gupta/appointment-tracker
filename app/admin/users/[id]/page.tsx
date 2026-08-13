@@ -1,0 +1,388 @@
+"use client";
+
+import { useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  ArrowLeft,
+  Eye,
+  LogOut,
+  Search,
+  Shield,
+  ShieldOff,
+  Trash2,
+  TriangleAlert,
+  UserRoundCog,
+} from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import { useAdminUserDetail } from "@/lib/hooks/use-admin-user-detail";
+import { useAdminUserPatients } from "@/lib/hooks/use-admin-user-patients";
+import { useUpdateAdminUser, useDeleteAdminUser } from "@/lib/hooks/use-admin-user-mutations";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { Spinner } from "@/components/ui/Spinner";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+
+type PendingAction = "suspend" | "reactivate" | "forceLogout" | "makeAdmin" | "removeAdmin";
+
+// Admin panel user detail (Plan Phase C). Auth-gating + chrome live in
+// app/admin/layout.tsx. Every action here confirms via a real modal
+// (ConfirmDialog) rather than a bare confirm() — Delete goes further still,
+// requiring the account's exact email typed out, since it's the one action
+// nothing here can undo.
+export default function AdminUserDetailPage() {
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const { user: currentAdmin } = useAuth();
+  const { data, isLoading, isError, error } = useAdminUserDetail(params.id);
+  const updateUser = useUpdateAdminUser(params.id);
+  const deleteUser = useDeleteAdminUser();
+
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const isSelf = currentAdmin?.id === params.id;
+
+  function runPendingAction() {
+    if (pendingAction === "suspend") updateUser.mutate({ status: "SUSPENDED" });
+    else if (pendingAction === "reactivate") updateUser.mutate({ status: "ACTIVE" });
+    else if (pendingAction === "forceLogout") updateUser.mutate({ forceLogout: true });
+    else if (pendingAction === "makeAdmin") updateUser.mutate({ role: "ADMIN" });
+    else if (pendingAction === "removeAdmin") updateUser.mutate({ role: "USER" });
+    setPendingAction(null);
+  }
+
+  const actionCopy: Record<PendingAction, { title: string; description: string; confirmLabel: string; danger: boolean }> = {
+    suspend: {
+      title: `Suspend ${data?.user.name}?`,
+      description: "They'll be logged out everywhere immediately and won't be able to log in again until reactivated.",
+      confirmLabel: "Suspend",
+      danger: true,
+    },
+    reactivate: {
+      title: `Reactivate ${data?.user.name}?`,
+      description: "They'll be able to log in again immediately.",
+      confirmLabel: "Reactivate",
+      danger: false,
+    },
+    forceLogout: {
+      title: `Force logout ${data?.user.name}?`,
+      description: `Ends all ${data?.user.activeSessionCount ?? 0} of their active session(s) right now — they'll need to log in again.`,
+      confirmLabel: "Force logout",
+      danger: false,
+    },
+    makeAdmin: {
+      title: `Make ${data?.user.name} an admin?`,
+      description: "They'll get full access to this admin panel — every account, every action here.",
+      confirmLabel: "Make admin",
+      danger: false,
+    },
+    removeAdmin: {
+      title: `Remove admin access from ${data?.user.name}?`,
+      description: "They'll immediately lose access to this admin panel and become a regular account.",
+      confirmLabel: "Remove admin access",
+      danger: true,
+    },
+  };
+
+  return (
+    <main className="flex flex-1 flex-col gap-6 px-6 py-10 md:px-10">
+      <Link
+        href="/admin/users"
+        className="flex w-fit cursor-pointer items-center gap-1.5 text-sm text-muted hover:text-text"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to users
+      </Link>
+
+      {isLoading && (
+        <div className="flex flex-1 items-center justify-center py-16">
+          <Spinner label="Loading account…" />
+        </div>
+      )}
+
+      {isError && error instanceof Error && error.message === "NOT_FOUND" && (
+        <p className="text-sm text-danger">This account doesn&rsquo;t exist (it may have just been deleted).</p>
+      )}
+      {isError && error instanceof Error && error.message !== "NOT_FOUND" && (
+        <p className="text-sm text-danger">Couldn&rsquo;t load this account: {error.message}</p>
+      )}
+
+      {data && (
+        <>
+          <div className="rounded-lg border border-border bg-surface p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h1 className="flex items-center gap-2 text-2xl font-semibold">
+                  {data.user.name}
+                  {data.user.role === "ADMIN" && <Shield className="h-5 w-5 text-primary" aria-label="Admin" />}
+                </h1>
+                <p className="mt-0.5 text-sm text-muted">{data.user.email}</p>
+              </div>
+              <span
+                className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                  data.user.status === "SUSPENDED"
+                    ? "bg-danger/10 text-danger"
+                    : "bg-accent-soft text-primary"
+                }`}
+              >
+                {data.user.status === "SUSPENDED" ? "Suspended" : "Active"}
+              </span>
+            </div>
+
+            <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+              <Field label="Gender" value={data.user.gender} />
+              <Field label="Student type" value={data.user.studentType ?? "—"} />
+              <Field label="Year" value={data.user.year ?? "—"} />
+              <Field label="Phone" value={data.user.phone ?? "—"} />
+              <Field label="Specialization" value={data.user.specialization ?? "—"} />
+              <Field label="Institute" value={data.user.institute ?? "—"} className="col-span-2" />
+              <Field label="Joined" value={new Date(data.user.createdAt).toLocaleDateString()} />
+            </dl>
+
+            <dl className="mt-4 grid grid-cols-3 gap-3 border-t border-border pt-4 text-sm">
+              <Field label="Patients" value={String(data.user.patientCount)} />
+              <Field label="Appointments" value={String(data.user.appointmentCount)} />
+              <Field label="Active sessions" value={String(data.user.activeSessionCount)} />
+            </dl>
+          </div>
+
+          <AdminUserPatients userId={data.user.id} />
+
+          {isSelf ? (
+            <p className="rounded-lg border border-border bg-surface p-6 text-sm text-muted">
+              This is your own account — suspend, force-logout, role, and delete actions aren&rsquo;t
+              available on yourself here.
+            </p>
+          ) : (
+            <>
+          <div className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-6">
+            <h2 className="text-sm font-medium text-muted">Actions</h2>
+
+            {updateUser.isError && (
+              <p className="text-sm text-danger">
+                {updateUser.error instanceof Error ? updateUser.error.message : "That action failed."}
+              </p>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={updateUser.isPending}
+                onClick={() => setPendingAction(data.user.status === "SUSPENDED" ? "reactivate" : "suspend")}
+                className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
+                  data.user.status === "SUSPENDED"
+                    ? "border-primary/30 text-primary hover:border-primary"
+                    : "border-border hover:border-danger hover:text-danger"
+                }`}
+              >
+                {data.user.status === "SUSPENDED" ? (
+                  <Shield className="h-4 w-4" />
+                ) : (
+                  <ShieldOff className="h-4 w-4" />
+                )}
+                {data.user.status === "SUSPENDED" ? "Reactivate account" : "Suspend account"}
+              </button>
+
+              <button
+                type="button"
+                disabled={updateUser.isPending}
+                onClick={() => setPendingAction("forceLogout")}
+                className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:border-primary disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <LogOut className="h-4 w-4" />
+                Force logout ({data.user.activeSessionCount} session
+                {data.user.activeSessionCount === 1 ? "" : "s"})
+              </button>
+
+              <button
+                type="button"
+                disabled={updateUser.isPending}
+                onClick={() => setPendingAction(data.user.role === "ADMIN" ? "removeAdmin" : "makeAdmin")}
+                className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:border-primary disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <UserRoundCog className="h-4 w-4" />
+                {data.user.role === "ADMIN" ? "Remove admin access" : "Make admin"}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-lg border border-danger/30 bg-surface p-6">
+            <h2 className="flex items-center gap-1.5 text-sm font-medium text-danger">
+              <TriangleAlert className="h-4 w-4" />
+              Danger zone
+            </h2>
+            <p className="text-sm text-muted">
+              Permanently deletes this account and all {data.user.patientCount} of their patient
+              {data.user.patientCount === 1 ? "" : "s"} (and every appointment under them). This can&rsquo;t
+              be undone. Type <span className="font-mono text-text">{data.user.email}</span> to confirm.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder={data.user.email}
+                className="w-full max-w-xs rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-danger"
+              />
+              <button
+                type="button"
+                disabled={deleteConfirmText !== data.user.email || deleteUser.isPending}
+                onClick={async () => {
+                  await deleteUser.mutateAsync(data.user.id);
+                  router.push("/admin/users");
+                }}
+                className="flex cursor-pointer items-center gap-2 rounded-md bg-danger px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Trash2 className="h-4 w-4" />
+                {deleteUser.isPending ? "Deleting…" : "Delete account permanently"}
+              </button>
+            </div>
+            {deleteUser.isError && (
+              <p className="text-sm text-danger">
+                {deleteUser.error instanceof Error ? deleteUser.error.message : "Delete failed."}
+              </p>
+            )}
+          </div>
+            </>
+          )}
+
+          {pendingAction && (
+            <ConfirmDialog
+              open
+              title={actionCopy[pendingAction].title}
+              description={actionCopy[pendingAction].description}
+              confirmLabel={actionCopy[pendingAction].confirmLabel}
+              danger={actionCopy[pendingAction].danger}
+              confirming={updateUser.isPending}
+              onCancel={() => setPendingAction(null)}
+              onConfirm={runPendingAction}
+            />
+          )}
+        </>
+      )}
+    </main>
+  );
+}
+
+function Field({
+  label,
+  value,
+  className = "",
+}: Readonly<{ label: string; value: string; className?: string }>) {
+  return (
+    <div className={className}>
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className="text-text">{value}</dd>
+    </div>
+  );
+}
+
+const PATIENTS_PAGE_SIZE = 20;
+
+// Read-only visibility into this user's own patient list — the thing the
+// admin nav-link fix (Sidebar) was really about: an admin never gets the
+// resident CRUD Patients page, but oversight/support still needs a way to
+// actually see this data, deliberately presented with no edit/add/delete
+// controls and no link out to the resident /patients/:id page (which would
+// 404 for anyone but the owning resident anyway).
+function AdminUserPatients({ userId }: Readonly<{ userId: string }>) {
+  const [searchInput, setSearchInput] = useState("");
+  const [page, setPage] = useState(1);
+  const search = useDebouncedValue(searchInput.trim(), 300);
+  const { data, isLoading, isError } = useAdminUserPatients(userId, search, page);
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / PATIENTS_PAGE_SIZE)) : 1;
+
+  return (
+    <div className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-6">
+      <div>
+        <h2 className="flex items-center gap-1.5 text-sm font-medium text-muted">
+          <Eye className="h-4 w-4" />
+          Patients (view only)
+        </h2>
+        <p className="mt-0.5 text-xs text-muted">
+          Read-only — there&rsquo;s no add/edit/delete here, only the account-level actions below.
+        </p>
+      </div>
+
+      <label className="relative block max-w-sm">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+        <input
+          type="search"
+          placeholder="Search by name or OPD no."
+          value={searchInput}
+          onChange={(e) => {
+            setSearchInput(e.target.value);
+            setPage(1);
+          }}
+          className="w-full rounded-md border border-border bg-surface py-2 pl-9 pr-3 text-sm outline-none focus:border-primary"
+        />
+      </label>
+
+      {isLoading && (
+        <div className="flex items-center justify-center py-8">
+          <Spinner label="Loading patients…" />
+        </div>
+      )}
+
+      {isError && <p className="text-sm text-danger">Couldn&rsquo;t load this user&rsquo;s patients.</p>}
+
+      {data && data.patients.length === 0 && (
+        <p className="text-sm text-muted">
+          {search ? `No patients match "${search}".` : "This account has no patients logged."}
+        </p>
+      )}
+
+      {data && data.patients.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {data.patients.map((patient) => (
+            <div
+              key={patient.id}
+              className="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{patient.name}</p>
+                <p className="mt-0.5 text-xs text-muted">
+                  OPD {patient.opdNo}
+                  {patient.age !== null ? ` · ${patient.age}y` : ""}
+                  {patient.phone ? ` · ${patient.phone}` : ""}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-col items-end text-xs">
+                <span className="text-text">
+                  {patient.lastVisitAt
+                    ? new Date(patient.lastVisitAt).toLocaleDateString()
+                    : "No visits yet"}
+                </span>
+                <span className="text-muted">
+                  {patient.visitCount} visit{patient.visitCount === 1 ? "" : "s"}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {data && data.total > PATIENTS_PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm">
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="cursor-pointer rounded-md border border-border px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <span className="text-muted">
+            Page {page} of {totalPages}
+          </span>
+          <button
+            type="button"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            className="cursor-pointer rounded-md border border-border px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

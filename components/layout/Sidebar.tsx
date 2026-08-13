@@ -2,30 +2,39 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Users, UserCircle, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LogOut, PanelLeftClose, PanelLeftOpen, Shield } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { PulseMark } from "@/components/icons/PulseMark";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
-
-const NAV_LINKS = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/patients", label: "Patients", icon: Users },
-  { href: "/profile", label: "Profile", icon: UserCircle },
-];
+import { ADMIN_NAV_LINKS, type NavLink } from "@/components/layout/nav-links";
 
 // The Phase 10 sidebar shell (PRD Reference G: sidebar-based dashboard
-// instead of a top-nav-only layout). Rendered twice by
-// app/(dashboard)/layout.tsx — once pinned in the desktop `<aside>`, once
-// inside the mobile slide-over drawer — so it takes an optional `onNavigate`
-// to close that drawer after a link/logout click; the desktop sidebar simply
-// never passes one. `collapsed`/`onToggleCollapse` are desktop-only too — the
-// mobile drawer never passes them, so it always renders fully expanded (there's
-// no shared-with-content width to save there).
+// instead of a top-nav-only layout), generalized in Plan Phase C to also
+// back the admin panel's sidebar — `navLinks`/`homeHref` are what differ
+// between the two (components/layout/nav-links.tsx), everything else about
+// the shell (collapse, mobile drawer, logout) is shared via AppShell.
+//
+// An ADMIN-role account always gets ADMIN_NAV_LINKS here, regardless of
+// which `navLinks` its layout passed in — an admin isn't assumed to also be
+// a PG resident, so it never sees Dashboard/Patients (app/(dashboard)/layout.tsx
+// also redirects an admin away from those routes outright, this is just the
+// nav reflecting that same rule).
+//
+// Rendered twice per AppShell mount — once pinned in the desktop `<aside>`,
+// once inside the mobile slide-over drawer — so it takes an optional
+// `onNavigate` to close that drawer after a link/logout click; the desktop
+// sidebar simply never passes one. `collapsed`/`onToggleCollapse` are
+// desktop-only too — the mobile drawer never passes them, so it always
+// renders fully expanded (there's no shared-with-content width to save there).
 export function Sidebar({
+  navLinks,
+  homeHref,
   onNavigate,
   collapsed = false,
   onToggleCollapse,
 }: Readonly<{
+  navLinks: NavLink[];
+  homeHref: string;
   onNavigate?: () => void;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -40,11 +49,14 @@ export function Sidebar({
     router.push("/login");
   }
 
+  const links = user?.role === "ADMIN" ? ADMIN_NAV_LINKS : navLinks;
+  const effectiveHomeHref = user?.role === "ADMIN" ? "/admin" : homeHref;
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-2 px-5 py-5">
         <Link
-          href="/dashboard"
+          href={effectiveHomeHref}
           onClick={onNavigate}
           className="flex items-center gap-2.5 overflow-hidden"
         >
@@ -67,7 +79,7 @@ export function Sidebar({
       </div>
 
       <nav className="flex flex-1 flex-col gap-1 px-3">
-        {NAV_LINKS.map(({ href, label, icon: Icon }) => {
+        {links.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link
@@ -94,7 +106,10 @@ export function Sidebar({
       <div className={`flex flex-col gap-3 border-t border-border px-3 py-4 ${collapsed ? "items-center" : "px-5"}`}>
         {!collapsed && user && (
           <div className="flex w-full flex-col overflow-hidden text-xs">
-            <span className="truncate font-medium text-text">{user.name}</span>
+            <span className="flex items-center gap-1 truncate font-medium text-text">
+              {user.name}
+              {user.role === "ADMIN" && <Shield className="h-3 w-3 shrink-0 text-primary" aria-label="Admin" />}
+            </span>
             <span className="truncate text-muted">{user.email}</span>
           </div>
         )}

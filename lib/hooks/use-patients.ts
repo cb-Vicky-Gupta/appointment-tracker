@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
+import { fetchJson } from "@/lib/fetch-json";
 
 export interface PatientListItem {
   id: string;
@@ -22,14 +23,6 @@ interface PatientListResponse {
   page: number;
   pageSize: number;
   total: number;
-}
-
-async function fetchJson<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.error ?? `Request failed (${res.status})`);
-  }
-  return res.json();
 }
 
 export function usePatients(search: string, page: number) {

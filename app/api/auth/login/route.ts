@@ -24,6 +24,13 @@ export async function POST(req: NextRequest) {
   // don't let the response shape reveal which emails are registered.
   if (!user || !passwordOk) return jsonError(401, "Invalid email or password");
 
+  // Suspension (admin panel, Plan Phase B) is checked *after* the password
+  // to avoid using it as a way to probe account status for an email you
+  // don't already have the password for.
+  if (user.status === "SUSPENDED") {
+    return jsonError(403, "This account has been suspended");
+  }
+
   const { accessToken, refreshToken } = await issueTokens(user.id);
 
   const res = NextResponse.json({ accessToken, refreshToken, user: toPublicUser(user) });

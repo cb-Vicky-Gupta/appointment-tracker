@@ -3,6 +3,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useAuth, type Gender, type PublicUser } from "@/lib/auth-context";
 import { useTheme } from "@/lib/theme-context";
+import { fetchJson } from "@/lib/fetch-json";
 
 export interface UpdateProfileInput {
   name?: string;
@@ -31,11 +32,7 @@ export function useUpdateProfile() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.error ?? `Request failed (${res.status})`);
-      }
-      return res.json() as Promise<{ user: PublicUser }>;
+      return fetchJson<{ user: PublicUser }>(res);
     },
     onSuccess: ({ user }, input) => {
       updateUser(user);

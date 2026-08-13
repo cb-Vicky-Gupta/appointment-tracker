@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, UserRoundPlus } from "lucide-react";
+import { Download, Search, UserRoundPlus } from "lucide-react";
 import { usePatients } from "@/lib/hooks/use-patients";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { useCsvExport } from "@/lib/hooks/use-csv-export";
 import { PatientCard } from "@/components/patients/PatientCard";
 import { Spinner } from "@/components/ui/Spinner";
 
@@ -19,6 +20,10 @@ export default function PatientsPage() {
 
   const { data, isLoading, isError, error } = usePatients(search, page);
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
+  // Exports the caller's own appointment log (every visit, across every
+  // one of their patients) as CSV — matches the same name/OPD-no search
+  // above, so exporting while filtered exports just that filtered set.
+  const csvExport = useCsvExport("/api/patients/export");
 
   return (
     <main className="flex flex-1 flex-col gap-6 px-6 py-10 md:px-10">
@@ -27,13 +32,24 @@ export default function PatientsPage() {
           <h1 className="text-2xl font-semibold">Patients</h1>
           <p className="mt-1 text-sm text-muted">Your own list — separate from every other resident&rsquo;s.</p>
         </div>
-        <Link
-          href="/patients/new"
-          className="flex cursor-pointer items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-contrast"
-        >
-          <UserRoundPlus className="h-4 w-4" />
-          Add today&rsquo;s patient
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => csvExport.triggerExport(search)}
+            disabled={csvExport.exporting}
+            className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:border-primary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" />
+            {csvExport.exporting ? "Exporting…" : "Export CSV"}
+          </button>
+          <Link
+            href="/patients/new"
+            className="flex cursor-pointer items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-contrast"
+          >
+            <UserRoundPlus className="h-4 w-4" />
+            Add today&rsquo;s patient
+          </Link>
+        </div>
       </div>
 
       <label className="relative block max-w-sm">
@@ -49,6 +65,8 @@ export default function PatientsPage() {
           className="w-full rounded-md border border-border bg-surface py-2 pl-9 pr-3 text-sm outline-none focus:border-primary"
         />
       </label>
+
+      {csvExport.error && <p className="text-sm text-danger">{csvExport.error}</p>}
 
       {isLoading && (
         <div className="flex flex-1 items-center justify-center py-16">

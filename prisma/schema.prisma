@@ -18,13 +18,31 @@ enum Gender {
   OTHER
 }
 
+// Admin panel (Plan Phase A). Enums, not plain strings like `themeMode`/
+// `year` below — role/status gate access to *other people's* data, so a
+// typo here is a security bug, not just a display glitch. There is no API
+// route that sets `role` on a not-yet-admin account (see
+// scripts/grant-admin.mjs) — self-service privilege escalation is the one
+// thing this model is deliberately unable to express.
+enum Role {
+  USER
+  ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+
 model User {
-  id           String   @id @default(cuid())
+  id           String        @id @default(cuid())
   name         String
-  email        String   @unique
+  email        String        @unique
   passwordHash String
-  gender       Gender   @default(OTHER)
-  themeMode    String   @default("light") // "light" | "dark"
+  gender       Gender        @default(OTHER)
+  themeMode    String        @default("light") // "light" | "dark"
+  role         Role          @default(USER)
+  status       AccountStatus @default(ACTIVE)
 
   // Professional details (Profile page) — this app is built for medical/
   // dental UG and PG students specifically, not a generic "user"; these are
@@ -40,6 +58,26 @@ model User {
 
   patients      Patient[]
   refreshTokens RefreshToken[]
+}
+
+// Admin panel (Plan Phase B) — a record of every destructive/consequential
+// admin action, since these touch other people's accounts and real patient
+// data. Deliberately has NO foreign-key relations to User: an audit log
+// that cascade-deletes when its subject (or actor) is removed defeats its
+// own purpose, so admin/target identity is captured as plain denormalized
+// fields (id + email, snapshotted at the time of the action) instead.
+model AdminAction {
+  id           String   @id @default(cuid())
+  adminId      String
+  adminEmail   String
+  action       String // "SUSPEND" | "REACTIVATE" | "FORCE_LOGOUT" | "ROLE_CHANGE" | "DELETE_USER"
+  targetUserId String
+  targetEmail  String
+  detail       String?
+  createdAt    DateTime @default(now())
+
+  @@index([targetUserId])
+  @@index([adminId])
 }
 
 // Signup is now a 3-step email-verification flow (start -> verify-otp ->

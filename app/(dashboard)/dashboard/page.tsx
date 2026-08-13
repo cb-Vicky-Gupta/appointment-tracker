@@ -1,10 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, ScanLine, Users } from "lucide-react";
+import { ArrowRight, CalendarCheck, CalendarRange, ClipboardList, ScanLine, Users } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { useDashboardStats } from "@/lib/hooks/use-dashboard-stats";
-import { StatsCards } from "@/components/dashboard/StatsCards";
+import { useDashboardStats, type DashboardStats } from "@/lib/hooks/use-dashboard-stats";
+import { StatsCards, type StatCardConfig } from "@/components/dashboard/StatsCards";
+
+const STAT_CARDS: Array<StatCardConfig<DashboardStats>> = [
+  { key: "totalPatients", label: "Total patients", icon: Users },
+  { key: "totalAppointments", label: "Total visits logged", icon: ClipboardList },
+  { key: "todayAppointments", label: "Today's visits", icon: CalendarCheck },
+  { key: "thisWeekAppointments", label: "This week's visits", icon: CalendarRange },
+];
 
 const QUICK_ACTIONS = [
   {
@@ -45,7 +52,7 @@ export default function DashboardPage() {
         <p className="mt-1 text-sm text-muted">Here&rsquo;s how your patient log looks today.</p>
       </div>
 
-      <StatsCards stats={stats} isLoading={isLoading} isError={isError} />
+      <StatsCards stats={stats} isLoading={isLoading} isError={isError} cards={STAT_CARDS} />
 
       <div>
         <h2 className="text-sm font-medium text-muted">Quick actions</h2>

@@ -9,6 +9,10 @@ export function unauthorized(message = "Unauthorized") {
   return jsonError(401, message);
 }
 
+export function forbidden(message = "Forbidden") {
+  return jsonError(403, message);
+}
+
 export function validationError(error: ZodError) {
   return NextResponse.json(
     { error: "Validation failed", issues: error.issues },

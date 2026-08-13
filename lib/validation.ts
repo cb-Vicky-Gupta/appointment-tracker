@@ -109,6 +109,26 @@ export const logoutSchema = z.object({
 });
 export type LogoutInput = z.infer<typeof logoutSchema>;
 
+// --- Admin panel (Plan Phase B) ---------------------------------------------
+
+export const adminUserListQuerySchema = z.object({
+  search: z.string().trim().max(200).optional(),
+  page: z.coerce.number().int().min(1).optional().default(1),
+});
+export type AdminUserListQuery = z.infer<typeof adminUserListQuerySchema>;
+
+// Every field optional (a caller only sends the one action it's taking);
+// at least one must be present. `forceLogout` is a trigger, not a field to
+// persist — it's true-or-absent, never explicitly false.
+export const adminUpdateUserSchema = z
+  .object({
+    status: z.enum(["ACTIVE", "SUSPENDED"]).optional(),
+    role: z.enum(["USER", "ADMIN"]).optional(),
+    forceLogout: z.literal(true).optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, { message: "No action specified" });
+export type AdminUpdateUserInput = z.infer<typeof adminUpdateUserSchema>;
+
 // --- Patients & appointments (Phase 5) -------------------------------------
 // (emptyToUndefined/optionalTrimmedString are declared near the top of this
 // file now — shared with updateMeSchema above.)

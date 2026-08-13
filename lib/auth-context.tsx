@@ -18,6 +18,8 @@ import { parseErrorMessage } from "@/lib/fetch-error";
 // never touch it directly from JS here.
 
 export type Gender = "MALE" | "FEMALE" | "OTHER";
+export type Role = "USER" | "ADMIN";
+export type AccountStatus = "ACTIVE" | "SUSPENDED";
 
 export interface PublicUser {
   id: string;
@@ -25,6 +27,12 @@ export interface PublicUser {
   email: string;
   gender: Gender;
   themeMode: string;
+  // Admin panel (Plan Phase A) — `role` isn't used to gate anything client-
+  // side yet (Phase C's nav-link check is cosmetic only regardless; the
+  // server-side requireAdmin check is the real gate), but the API already
+  // returns both.
+  role: Role;
+  status: AccountStatus;
   // Professional details (Profile page) — all optional/nullable since
   // they're filled in after signup, not during it.
   specialization: string | null;

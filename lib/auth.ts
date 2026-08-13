@@ -175,6 +175,28 @@ export async function getUserFromRequest(
   return verifyAccessToken(token);
 }
 
+export type RequireAdminResult =
+  | { outcome: "unauthenticated" }
+  | { outcome: "forbidden" }
+  | { outcome: "ok"; user: User };
+
+/** Admin-panel gate (Plan Phase A). Every `/api/admin/*` route calls this
+ *  instead of `getUserFromRequest` — it does the same bearer-token check
+ *  *and* loads the user row to confirm `role === "ADMIN"`, so a valid
+ *  access token alone is never enough to reach an admin route. Returns which
+ *  of the two failure modes happened so the route can 401 vs 403 correctly,
+ *  same convention as every other protected route in the app. There is no
+ *  way to become an admin through the API — see scripts/grant-admin.mjs. */
+export async function requireAdmin(req: NextRequest): Promise<RequireAdminResult> {
+  const auth = await getUserFromRequest(req);
+  if (!auth) return { outcome: "unauthenticated" };
+
+  const user = await prisma.user.findUnique({ where: { id: auth.userId } });
+  if (!user || user.role !== "ADMIN") return { outcome: "forbidden" };
+
+  return { outcome: "ok", user };
+}
+
 export { REFRESH_COOKIE_NAME };
 
 // --- Issuing / revoking a token pair, tied to the RefreshToken table -----

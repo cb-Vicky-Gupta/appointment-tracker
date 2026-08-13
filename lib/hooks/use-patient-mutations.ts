@@ -2,16 +2,9 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
+import { fetchJson as parseJsonOrThrow } from "@/lib/fetch-json";
 import type { PatientListItem } from "@/lib/hooks/use-patients";
 import type { AppointmentRecord } from "@/lib/hooks/use-patient-detail";
-
-async function parseJsonOrThrow<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.error ?? `Request failed (${res.status})`);
-  }
-  return res.json();
-}
 
 export interface NewPatientInput {
   name: string;

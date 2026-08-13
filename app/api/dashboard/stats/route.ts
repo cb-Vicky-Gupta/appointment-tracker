@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
 import { unauthorized } from "@/lib/api-response";
+import { getTodayRange, getThisWeekRange } from "@/lib/date-ranges";
 
 // GET /api/dashboard/stats -> { totalPatients, totalAppointments,
 // todayAppointments, thisWeekAppointments }, scoped to the caller's own data
@@ -13,17 +14,8 @@ export async function GET(req: NextRequest) {
   const auth = await getUserFromRequest(req);
   if (!auth) return unauthorized();
 
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfTomorrow = new Date(startOfToday);
-  startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
-
-  // Week starts Monday. getDay(): 0=Sun..6=Sat -> days since Monday.
-  const daysSinceMonday = (startOfToday.getDay() + 6) % 7;
-  const startOfWeek = new Date(startOfToday);
-  startOfWeek.setDate(startOfWeek.getDate() - daysSinceMonday);
-  const startOfNextWeek = new Date(startOfWeek);
-  startOfNextWeek.setDate(startOfNextWeek.getDate() + 7);
+  const today = getTodayRange();
+  const thisWeek = getThisWeekRange();
 
   const [totalPatients, totalAppointments, todayAppointments, thisWeekAppointments] =
     await Promise.all([
@@ -32,13 +24,13 @@ export async function GET(req: NextRequest) {
       prisma.appointment.count({
         where: {
           patient: { userId: auth.userId },
-          appointmentDate: { gte: startOfToday, lt: startOfTomorrow },
+          appointmentDate: { gte: today.start, lt: today.end },
         },
       }),
       prisma.appointment.count({
         where: {
           patient: { userId: auth.userId },
-          appointmentDate: { gte: startOfWeek, lt: startOfNextWeek },
+          appointmentDate: { gte: thisWeek.start, lt: thisWeek.end },
         },
       }),
     ]);

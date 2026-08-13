@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { TriangleAlert } from "lucide-react";
 
 // Shared confirmation modal for consequential admin actions (suspend,
@@ -32,6 +33,17 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }>) {
+  // Rendered via a portal to document.body rather than in place — callers
+  // like the admin users table put this inside a <tr>, and a <div> can't
+  // legally be a child of <tr> (React warns and it's a hydration hazard).
+  // `mounted` gates the portal to after the client mount, since
+  // `document` doesn't exist during SSR.
+  const [mounted, setMounted] = useState(false);
+  // Intentional one-time "we're on the client now" flag (see the same
+  // pattern/rationale in lib/theme-context.tsx), not derived-from-props state.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => setMounted(true), []);
+
   useEffect(() => {
     if (!open) return;
     function handleKeyDown(e: KeyboardEvent) {
@@ -41,9 +53,9 @@ export function ConfirmDialog({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open, onCancel]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
       <button
         type="button"
@@ -86,6 +98,7 @@ export function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

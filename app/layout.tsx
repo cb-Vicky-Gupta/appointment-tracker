@@ -37,9 +37,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       // to the real gender+mode combo as soon as the session/localStorage
       // resolves client-side (see lib/theme-context.tsx).
       data-theme="other-light"
-      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}
+      // `dvh`, not `vh`/`h-full`, on both html and body: on a phone the URL
+      // bar makes 100vh taller than what's actually visible, so a `100vh`
+      // page hangs its bottom edge under the browser chrome. That's what was
+      // pushing the sidebar's logout button below the fold (AppShell already
+      // sized itself in `dvh` — it was this ancestor forcing it back to vh).
+      className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} min-h-dvh antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-bg text-text">
+      <body className="min-h-dvh flex flex-col bg-bg text-text">
         <AuthProvider>
           <QueryProvider>
             <ThemeProvider>{children}</ThemeProvider>

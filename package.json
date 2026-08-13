@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "grant-admin": "tsx scripts/grant-admin.ts"
+    "grant-admin": "tsx scripts/grant-admin.ts",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",

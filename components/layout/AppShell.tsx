@@ -59,7 +59,12 @@ export function AppShell({
   }
 
   return (
-    <div className="flex h-dvh flex-1 overflow-hidden">
+    // No `flex-1` here: as a flex item of the body's column, `flex: 1 1 0%`
+    // makes flex sizing — not the `height` property — decide the used height,
+    // so it silently overrode `h-dvh` and stretched the shell to the body's
+    // full height. `h-dvh` alone is what keeps the sidebar's bottom edge (and
+    // its logout button) inside the visible viewport.
+    <div className="flex h-dvh overflow-hidden">
       <aside
         className={`hidden shrink-0 border-r border-border bg-surface transition-[width] duration-200 md:flex md:flex-col ${
           collapsed ? "w-16" : "w-64"
@@ -81,7 +86,11 @@ export function AppShell({
             onClick={() => setMobileNavOpen(false)}
             className="absolute inset-0 cursor-default bg-black/40"
           />
-          <aside className="relative flex h-full w-64 flex-col bg-surface shadow-xl">
+          {/* h-dvh, not h-full: `fixed inset-0` resolves against the *large*
+              viewport (URL bar excluded), so a full-height drawer would hide
+              its own footer under the browser chrome — and being `fixed`,
+              you couldn't scroll to it either. */}
+          <aside className="relative flex h-dvh w-64 flex-col bg-surface shadow-xl">
             <Sidebar
               navLinks={navLinks}
               homeHref={homeHref}

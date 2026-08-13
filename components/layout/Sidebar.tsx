@@ -54,7 +54,7 @@ export function Sidebar({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 px-5 py-5">
+      <div className="flex shrink-0 items-center justify-between gap-2 px-5 py-5">
         <Link
           href={effectiveHomeHref}
           onClick={onNavigate}
@@ -78,7 +78,12 @@ export function Sidebar({
         )}
       </div>
 
-      <nav className="flex flex-1 flex-col gap-1 px-3">
+      {/* `min-h-0` is what actually lets this shrink: a flex item's default
+          `min-height: auto` means `flex-1` can grow but never shrink below
+          its content, so on a short screen the nav kept its full height and
+          shoved the logout footer off the bottom. Now the *nav* scrolls
+          (rarely, with only 3 links) and the footer stays put. */}
+      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3">
         {links.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
@@ -103,7 +108,11 @@ export function Sidebar({
         })}
       </nav>
 
-      <div className={`flex flex-col gap-3 border-t border-border px-3 py-4 ${collapsed ? "items-center" : "px-5"}`}>
+      <div
+        className={`flex shrink-0 flex-col gap-3 border-t border-border px-3 py-4 ${
+          collapsed ? "items-center" : "px-5"
+        }`}
+      >
         {!collapsed && user && (
           <div className="flex w-full flex-col overflow-hidden text-xs">
             <span className="flex items-center gap-1 truncate font-medium text-text">

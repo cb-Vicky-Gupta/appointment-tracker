@@ -16,9 +16,11 @@ import { useAuth } from "@/lib/auth-context";
 // should ever reach for a hardcoded Tailwind color.
 //
 // themeMode precedence: explicit local override > the signed-in user's saved
-// preference > system preference. Until Phase 9 wires `PATCH /api/me`, the
-// override is local-only (localStorage) — an explicit, accepted gap per the
-// Phase 4 build notes, not an oversight.
+// preference > system preference. The header's quick `ThemeToggle` sets a
+// local-only override (localStorage) for a fast, no-round-trip flip; the
+// profile page's toggle (Phase 9) persists via `PATCH /api/me` *and* calls
+// `clearOverride()` so the freshly-saved value drives the app immediately
+// instead of being shadowed by a stale local override.
 //
 // All three inputs are derived values (not effect+setState) so there's
 // nothing to synchronize; the only effect below writes the resolved value to
@@ -30,6 +32,9 @@ type GenderKey = "male" | "female" | "other";
 interface ThemeContextValue {
   themeMode: ThemeMode;
   toggleThemeMode: () => void;
+  /** Drops the local-only override so `themeMode` falls back to the signed-in
+   *  user's saved preference (or system preference, if signed out). */
+  clearOverride: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -55,10 +60,27 @@ function toGenderKey(gender: string | undefined): GenderKey {
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
 
-  // Lazy initializers run once per mount and are SSR-safe (both helpers
-  // return a stable default when `window` isn't available yet).
-  const [overrideMode, setOverrideMode] = useState<ThemeMode | null>(readStoredMode);
-  const [systemMode] = useState<ThemeMode>(readSystemMode);
+  // Start from the same values the server rendered with ("no override, no
+  // system preference read yet") rather than reading localStorage/matchMedia
+  // in a lazy initializer — that looked SSR-safe (both helpers guard on
+  // `typeof window`), but React's *client* render during hydration already
+  // has a real `window`, so it would return the real stored/system value on
+  // the very first client render and immediately disagree with the server's
+  // window-less render, which is a hydration mismatch. Reading them in an
+  // effect instead means the first client render matches the server, and
+  // this corrects itself right after mount — before any signed-in page
+  // renders real content (they all block on a loading state, Reference F).
+  const [overrideMode, setOverrideMode] = useState<ThemeMode | null>(null);
+  const [systemMode, setSystemMode] = useState<ThemeMode>("light");
+
+  useEffect(() => {
+    // Intentional one-time sync from an external system (localStorage +
+    // matchMedia) on mount, not derived-from-props state — exactly the case
+    // the lint rule's own guidance calls out as legitimate.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOverrideMode(readStoredMode());
+    setSystemMode(readSystemMode());
+  }, []);
 
   const userMode: ThemeMode | null =
     user?.themeMode === "dark" || user?.themeMode === "light" ? user.themeMode : null;
@@ -81,8 +103,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     });
   }, [userMode, systemMode]);
 
+  const clearOverride = useCallback(() => {
+    window.localStorage.removeItem(STORAGE_KEY);
+    setOverrideMode(null);
+  }, []);
+
   return (
-    <ThemeContext.Provider value={{ themeMode, toggleThemeMode }}>
+    <ThemeContext.Provider value={{ themeMode, toggleThemeMode, clearOverride }}>
       {children}
     </ThemeContext.Provider>
   );

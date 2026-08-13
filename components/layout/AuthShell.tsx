@@ -11,7 +11,7 @@ export function AuthShell({ children }: Readonly<{ children: ReactNode }>) {
       <div className="flex w-full flex-1 flex-col md:w-[55%]">
         <div className="flex items-center gap-2 px-6 pt-8 md:px-12">
           <PulseMark className="h-8 w-8" />
-          <span className="font-display text-lg font-medium">PG Appointment Tracker</span>
+          <span className="font-display text-lg font-medium">Ilazdoot</span>
         </div>
         {children}
       </div>

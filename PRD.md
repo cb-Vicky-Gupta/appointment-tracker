@@ -155,25 +155,64 @@ appointment (paginated, not just the latest). `tsc --noEmit`, `eslint`, `next bu
 Test data cleaned up afterward. Manual browser click-through still recommended, since this
 was verified via curl/build rather than a live session.
 
-### Phase 7 — Prescription OCR → autofill
+### Phase 7 — Prescription OCR → autofill ✅ done
 **Goal:** scan a prescription photo, get an editable pre-filled appointment form.
-- Image capture/upload (`<input capture>` for mobile camera), image stays client-side only.
-- Tesseract.js in a Web Worker; regex extraction for OPD no, phone, date, age
-  (Reference E, patterns in item 3).
-- "Scanned — please verify details" messaging; every field editable.
-- Wire into Phase 5's create-or-append flow (match suggestion, not auto-merge) and Phase 6's
-  UI.
-**Done when:** a printed OPD slip photo populates most fields correctly; a messy handwritten
-one still lets you fill in manually without the flow breaking; the image itself is never
-sent to the server (verify in Network tab).
+- `lib/ocr.ts` — `scanPrescription()` runs Tesseract.js (`createWorker`, which manages its own
+  Web Worker + WASM core internally) against the in-memory `File`; `extractFields()` is a pure,
+  unit-tested regex layer (OPD no, phone, age, date — Reference E patterns) kept separate so it
+  never has to touch the browser or the OCR engine.
+- `components/patients/PrescriptionScanner.tsx` — `<input capture="environment">` for the
+  mobile camera, an object-URL preview, "Scanned — please verify details" messaging. The
+  preview URL is revoked and the `File` reference dropped on retake/unmount; the image is
+  never attached to any `fetch` call.
+- `app/(dashboard)/patients/new/page.tsx` — the create-or-append flow this phase actually
+  needed (Phase 6 only shipped read-only list/detail UI, so there was no "add a patient" screen
+  at all yet): scan (optional) → fields pre-fill a plain form → live search-as-you-type against
+  the existing `GET /api/patients?search=` endpoint surfaces possible matches (Reference J) →
+  resident explicitly picks "add visit to this patient" or fills in a new patient's details →
+  submits to `POST /api/patients/:id/appointments` or `POST /api/patients` respectively via new
+  `lib/hooks/use-patient-mutations.ts` (`useCreatePatient`/`useAddAppointment`, invalidating the
+  list/detail queries on success).
+- Entry points wired in: "Add today's patient" on `/patients` and the dashboard, "Add visit" on
+  a patient's own detail page (pre-fills the match target from the URL, skipping the search
+  step since identity is already known).
 
-### Phase 8 — Dashboard stats
+**Done when:** ✅ Verified. `tsc --noEmit`, `eslint`, and `next build` all clean (`/patients/new`
+compiles as a static route). `extractFields()` checked directly against sample OCR text —
+correctly pulls OPD no/phone/age and normalizes both `/`- and `-`-delimited, 2-digit-year dates
+(`05-03-25` → `2025-03-05`), and returns `{}` rather than throwing on text with no matches
+(covers the "messy handwritten scan" case — the form still opens fully editable). The
+create-or-append path itself (what the scanner ultimately feeds into) was verified via curl end
+to end: create a new patient + first visit, `search=` finds it by OPD prefix, appending a
+second visit leaves the first intact (`appointmentsMeta.total` → 2). The OCR engine itself only
+runs in a real browser (Tesseract.js needs a DOM/Worker), so the actual scan-a-photo step still
+wants a manual browser click-through with a real prescription photo before calling this fully
+proven; the image-never-leaves-the-device property is structural here (nothing in
+`PrescriptionScanner`/`ocr.ts` ever passes the `File`/`Blob` to `authFetch` or `fetch`), not
+just Network-tab-checked, but that manual pass is still worth doing.
+
+### Phase 8 — Dashboard stats ✅ done
 **Goal:** at-a-glance numbers on login.
-- `GET /api/dashboard/stats` — single Prisma aggregate query (not fetch-all-and-count-in-JS),
-  scoped to `userId`.
-- Cards: total patients, total appointments, today's appointments, this week's appointments.
-**Done when:** the numbers match manual counts in Prisma Studio for a test user, and stay
-correct after adding a patient/appointment.
+- `GET /api/dashboard/stats` — four `count()` calls run concurrently via `Promise.all`
+  (`totalPatients`, `totalAppointments`, `todayAppointments`, `thisWeekAppointments`), each
+  scoped to `userId` (Reference D) and hitting an indexed column/date-range filter rather than
+  fetching every row and counting in JS. Week boundary is Monday-based, computed from local
+  server time.
+- `lib/hooks/use-dashboard-stats.ts` + `components/dashboard/StatsCards.tsx` — four cards on
+  `app/(dashboard)/dashboard/page.tsx`, replacing the old placeholder copy.
+
+**Deviation:** the PRD's "single Prisma aggregate query" isn't achievable literally — the four
+numbers need four different `WHERE` filters (all-time vs. today vs. this week), and Prisma's
+`aggregate`/`groupBy` can't express that in one call — so this is four indexed `count()`s
+in parallel instead, matching the "not fetch-all-and-count-in-JS" intent (also the pattern
+Phase 5 already uses for `patient.count`).
+
+**Done when:** ✅ Verified via curl with a fresh test user: zero data → all four stats are `0`;
+after creating one patient with a visit dated today and a second patient with a visit dated 10
+days ago, stats returned `{totalPatients: 2, totalAppointments: 2, todayAppointments: 1,
+thisWeekAppointments: 1}`, cross-checked directly against `psql` counts on the same rows (2/2).
+Unauthenticated request → 401. `tsc --noEmit`, `eslint`, `next build` all clean. Test user/data
+cleaned up afterward.
 
 ### Phase 9 — Profile page
 **Goal:** user can edit their own profile, including the field that drives theme.

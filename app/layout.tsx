@@ -25,7 +25,7 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "PG Appointment Tracker",
+  title: "Ilazdoot",
   description: "A private patient appointment log for PG residents.",
 };
 

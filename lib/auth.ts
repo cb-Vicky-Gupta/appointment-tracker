@@ -3,7 +3,7 @@ import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import bcrypt from "bcryptjs";
 import type { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import type { User } from "@/lib/generated/prisma/client";
+import type { Gender, User } from "@/lib/generated/prisma/client";
 
 // --- Config -----------------------------------------------------------
 
@@ -55,6 +55,86 @@ export async function verifyAccessToken(
     const { payload } = await jwtVerify(token, getAccessTokenSecret());
     if (typeof payload.userId !== "string") return null;
     return payload as AccessTokenPayload;
+  } catch {
+    return null;
+  }
+}
+
+// --- Signup tokens (short-lived JWT proving "this email just verified an
+// OTP", issued by /api/auth/signup/verify-otp and redeemed by
+// /api/auth/signup/complete) ---------------------------------------------
+// Carries the details collected in step 1 (name/gender) so the "set
+// password" step doesn't have to re-ask for them or re-touch the DB. Reuses
+// the access-token secret — the `purpose` claim keeps it from being usable
+// as (or confused with) a real access token.
+
+const SIGNUP_TOKEN_TTL = "15m";
+
+export interface SignupTokenPayload extends JWTPayload {
+  purpose: "signup";
+  email: string;
+  name: string;
+  gender: Gender;
+}
+
+export async function signSignupToken(input: {
+  email: string;
+  name: string;
+  gender: Gender;
+}): Promise<string> {
+  return new SignJWT({ purpose: "signup", ...input })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(SIGNUP_TOKEN_TTL)
+    .sign(getAccessTokenSecret());
+}
+
+export async function verifySignupToken(token: string): Promise<SignupTokenPayload | null> {
+  try {
+    const { payload } = await jwtVerify(token, getAccessTokenSecret());
+    if (
+      payload.purpose !== "signup" ||
+      typeof payload.email !== "string" ||
+      typeof payload.name !== "string" ||
+      typeof payload.gender !== "string"
+    ) {
+      return null;
+    }
+    return payload as SignupTokenPayload;
+  } catch {
+    return null;
+  }
+}
+
+// --- Password-reset tokens (short-lived JWT proving "this email just
+// verified a reset OTP", issued by /api/auth/reset-password/verify-otp and
+// redeemed by /api/auth/reset-password/complete) — mirrors signup tokens
+// above, just without name/gender since the account already exists. -----
+
+const RESET_TOKEN_TTL = "15m";
+
+export interface PasswordResetTokenPayload extends JWTPayload {
+  purpose: "password-reset";
+  email: string;
+}
+
+export async function signPasswordResetToken(email: string): Promise<string> {
+  return new SignJWT({ purpose: "password-reset", email })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(RESET_TOKEN_TTL)
+    .sign(getAccessTokenSecret());
+}
+
+export async function verifyPasswordResetToken(
+  token: string
+): Promise<PasswordResetTokenPayload | null> {
+  try {
+    const { payload } = await jwtVerify(token, getAccessTokenSecret());
+    if (payload.purpose !== "password-reset" || typeof payload.email !== "string") {
+      return null;
+    }
+    return payload as PasswordResetTokenPayload;
   } catch {
     return null;
   }
@@ -141,6 +221,13 @@ export async function revokeRefreshToken(rawToken: string): Promise<void> {
   await prisma.refreshToken.deleteMany({
     where: { token: hashRefreshToken(rawToken) },
   });
+}
+
+/** Signs out every other session for this user — used after a password
+ *  reset, since anyone still holding an old refresh token shouldn't stay
+ *  logged in once the password that would've protected it has changed. */
+export async function revokeAllRefreshTokensForUser(userId: string): Promise<void> {
+  await prisma.refreshToken.deleteMany({ where: { userId } });
 }
 
 // --- Serialization --------------------------------------------------------

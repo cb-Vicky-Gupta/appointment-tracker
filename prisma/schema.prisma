@@ -25,11 +25,52 @@ model User {
   passwordHash String
   gender       Gender   @default(OTHER)
   themeMode    String   @default("light") // "light" | "dark"
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+
+  // Professional details (Profile page) — this app is built for medical/
+  // dental UG and PG students specifically, not a generic "user"; these are
+  // all optional since they're collected after signup, not during it.
+  specialization String? // e.g. "General Medicine", "Dentistry"
+  institute      String? // hospital/college name
+  studentType    String? // "UG" | "PG" — which year options apply
+  year           String? // e.g. "1st Year" .. "Final Year", "Internship"
+  phone          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   patients      Patient[]
   refreshTokens RefreshToken[]
+}
+
+// Signup is now a 3-step email-verification flow (start -> verify-otp ->
+// complete): no User row exists until the OTP is verified and a password is
+// set, so the pending state lives here instead. Keyed by email so a repeat
+// "start" (resend) just overwrites the previous OTP; the row is deleted the
+// moment verify-otp succeeds (see app/api/auth/signup/verify-otp/route.ts).
+model PendingSignup {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  gender       Gender
+  otpHash      String
+  otpExpiresAt DateTime
+  attempts     Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Forgot-password mirrors signup's OTP flow (start -> verify-otp ->
+// complete), same table shape as PendingSignup but keyed to an existing
+// User instead of a not-yet-created one. Deleted the moment its OTP is
+// verified — same one-time-use guarantee.
+model PasswordReset {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  otpHash      String
+  otpExpiresAt DateTime
+  attempts     Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model RefreshToken {
@@ -63,7 +104,13 @@ model Patient {
 
   appointments Appointment[]
 
-  @@index([userId, opdNo])
+  // One OPD No. can't belong to two different Patient rows for the same
+  // user — a repeat OPD No. means "add a visit to the existing patient"
+  // (POST .../appointments), never "create a second patient" (Reference J).
+  // Enforced both here (hard guarantee) and with a friendly pre-check in
+  // POST /api/patients (app/api/patients/route.ts) that returns which
+  // existing patient it collided with, rather than a raw constraint error.
+  @@unique([userId, opdNo])
   @@index([userId, name])
 }
 

@@ -8,6 +8,7 @@ import { useUpdateAdminUser } from "@/lib/hooks/use-admin-user-mutations";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useCsvExport } from "@/lib/hooks/use-csv-export";
 import { Spinner } from "@/components/ui/Spinner";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 const PAGE_SIZE = 20;
 
@@ -134,6 +135,7 @@ export default function AdminUsersPage() {
 function UserRow({ user }: Readonly<{ user: AdminUserListItem }>) {
   const updateUser = useUpdateAdminUser(user.id);
   const suspended = user.status === "SUSPENDED";
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   return (
     <tr className="border-b border-border last:border-0">
@@ -164,7 +166,7 @@ function UserRow({ user }: Readonly<{ user: AdminUserListItem }>) {
         <button
           type="button"
           disabled={updateUser.isPending}
-          onClick={() => updateUser.mutate({ status: suspended ? "ACTIVE" : "SUSPENDED" })}
+          onClick={() => setConfirmOpen(true)}
           title={suspended ? "Reactivate" : "Suspend"}
           className={`flex w-fit cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50 ${
             suspended
@@ -176,6 +178,26 @@ function UserRow({ user }: Readonly<{ user: AdminUserListItem }>) {
           {suspended ? "Reactivate" : "Suspend"}
         </button>
       </td>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title={suspended ? `Reactivate ${user.name}?` : `Suspend ${user.name}?`}
+        description={
+          suspended
+            ? "They'll be able to log in again immediately."
+            : "They'll be logged out everywhere immediately and won't be able to log in again until reactivated."
+        }
+        confirmLabel={suspended ? "Reactivate" : "Suspend"}
+        danger={!suspended}
+        confirming={updateUser.isPending}
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={() => {
+          updateUser.mutate(
+            { status: suspended ? "ACTIVE" : "SUSPENDED" },
+            { onSuccess: () => setConfirmOpen(false) }
+          );
+        }}
+      />
     </tr>
   );
 }

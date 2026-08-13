@@ -20,11 +20,15 @@ import { useAdminUserPatients } from "@/lib/hooks/use-admin-user-patients";
 import { useUpdateAdminUser, useDeleteAdminUser } from "@/lib/hooks/use-admin-user-mutations";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { Spinner } from "@/components/ui/Spinner";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+
+type PendingAction = "suspend" | "reactivate" | "forceLogout" | "makeAdmin" | "removeAdmin";
 
 // Admin panel user detail (Plan Phase C). Auth-gating + chrome live in
-// app/admin/layout.tsx. Every action here confirms inline rather than
-// bouncing through a bare confirm() — Delete specifically requires typing
-// the account's email, since it's the one action nothing here can undo.
+// app/admin/layout.tsx. Every action here confirms via a real modal
+// (ConfirmDialog) rather than a bare confirm() — Delete goes further still,
+// requiring the account's exact email typed out, since it's the one action
+// nothing here can undo.
 export default function AdminUserDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -34,7 +38,50 @@ export default function AdminUserDetailPage() {
   const deleteUser = useDeleteAdminUser();
 
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const isSelf = currentAdmin?.id === params.id;
+
+  function runPendingAction() {
+    if (pendingAction === "suspend") updateUser.mutate({ status: "SUSPENDED" });
+    else if (pendingAction === "reactivate") updateUser.mutate({ status: "ACTIVE" });
+    else if (pendingAction === "forceLogout") updateUser.mutate({ forceLogout: true });
+    else if (pendingAction === "makeAdmin") updateUser.mutate({ role: "ADMIN" });
+    else if (pendingAction === "removeAdmin") updateUser.mutate({ role: "USER" });
+    setPendingAction(null);
+  }
+
+  const actionCopy: Record<PendingAction, { title: string; description: string; confirmLabel: string; danger: boolean }> = {
+    suspend: {
+      title: `Suspend ${data?.user.name}?`,
+      description: "They'll be logged out everywhere immediately and won't be able to log in again until reactivated.",
+      confirmLabel: "Suspend",
+      danger: true,
+    },
+    reactivate: {
+      title: `Reactivate ${data?.user.name}?`,
+      description: "They'll be able to log in again immediately.",
+      confirmLabel: "Reactivate",
+      danger: false,
+    },
+    forceLogout: {
+      title: `Force logout ${data?.user.name}?`,
+      description: `Ends all ${data?.user.activeSessionCount ?? 0} of their active session(s) right now — they'll need to log in again.`,
+      confirmLabel: "Force logout",
+      danger: false,
+    },
+    makeAdmin: {
+      title: `Make ${data?.user.name} an admin?`,
+      description: "They'll get full access to this admin panel — every account, every action here.",
+      confirmLabel: "Make admin",
+      danger: false,
+    },
+    removeAdmin: {
+      title: `Remove admin access from ${data?.user.name}?`,
+      description: "They'll immediately lose access to this admin panel and become a regular account.",
+      confirmLabel: "Remove admin access",
+      danger: true,
+    },
+  };
 
   return (
     <main className="flex flex-1 flex-col gap-6 px-6 py-10 md:px-10">
@@ -120,9 +167,7 @@ export default function AdminUserDetailPage() {
               <button
                 type="button"
                 disabled={updateUser.isPending}
-                onClick={() =>
-                  updateUser.mutate({ status: data.user.status === "SUSPENDED" ? "ACTIVE" : "SUSPENDED" })
-                }
+                onClick={() => setPendingAction(data.user.status === "SUSPENDED" ? "reactivate" : "suspend")}
                 className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
                   data.user.status === "SUSPENDED"
                     ? "border-primary/30 text-primary hover:border-primary"
@@ -140,7 +185,7 @@ export default function AdminUserDetailPage() {
               <button
                 type="button"
                 disabled={updateUser.isPending}
-                onClick={() => updateUser.mutate({ forceLogout: true })}
+                onClick={() => setPendingAction("forceLogout")}
                 className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:border-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <LogOut className="h-4 w-4" />
@@ -151,9 +196,7 @@ export default function AdminUserDetailPage() {
               <button
                 type="button"
                 disabled={updateUser.isPending}
-                onClick={() =>
-                  updateUser.mutate({ role: data.user.role === "ADMIN" ? "USER" : "ADMIN" })
-                }
+                onClick={() => setPendingAction(data.user.role === "ADMIN" ? "removeAdmin" : "makeAdmin")}
                 className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:border-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <UserRoundCog className="h-4 w-4" />
@@ -199,6 +242,19 @@ export default function AdminUserDetailPage() {
             )}
           </div>
             </>
+          )}
+
+          {pendingAction && (
+            <ConfirmDialog
+              open
+              title={actionCopy[pendingAction].title}
+              description={actionCopy[pendingAction].description}
+              confirmLabel={actionCopy[pendingAction].confirmLabel}
+              danger={actionCopy[pendingAction].danger}
+              confirming={updateUser.isPending}
+              onCancel={() => setPendingAction(null)}
+              onConfirm={runPendingAction}
+            />
           )}
         </>
       )}

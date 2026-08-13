@@ -8,6 +8,7 @@ export interface AppointmentRecord {
   id: string;
   patientId: string;
   appointmentDate: string;
+  nextAppointmentDate: string | null;
   notes: string | null;
   ocrRawText: string | null;
   createdAt: string;

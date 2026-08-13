@@ -14,6 +14,24 @@ type MatchTarget = Pick<PatientListItem, "id" | "name" | "opdNo">;
 
 const INPUT_CLASS = "rounded-md border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus:border-primary";
 
+// "Today" per the resident's own clock, as the "YYYY-MM-DD" an
+// <input type="date"> expects — plain toISOString() would hand back
+// yesterday for anyone west of UTC.
+function todayLocal() {
+  const now = new Date();
+  const offsetMs = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10);
+}
+
+// Both date fields are date-only — a visit is "the 13th", not "the 13th at
+// 00:00 +05:30" — so they're pinned to UTC midnight rather than local
+// midnight. Everything that reads them back (the CSV export, the history
+// card) formats in UTC to match, which is what keeps the day from drifting
+// across timezones in either direction.
+function dateToIso(value: string) {
+  return new Date(`${value}T00:00:00.000Z`).toISOString();
+}
+
 export default function NewAppointmentPage() {
   return (
     <Suspense
@@ -51,7 +69,14 @@ function NewAppointmentPageInner() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
-  const [appointmentDate, setAppointmentDate] = useState("");
+  // Defaults to today — the overwhelmingly common case is "the patient I'm
+  // seeing right now", and a prefilled value is what makes it safe to require
+  // the field below instead of silently falling back to now() on the server.
+  const [appointmentDate, setAppointmentDate] = useState(todayLocal);
+  // No default: most visits don't end with a follow-up booked, and
+  // pre-filling a date here would silently invent appointments nobody agreed
+  // to.
+  const [nextAppointmentDate, setNextAppointmentDate] = useState("");
   const [notes, setNotes] = useState("");
   const [ocrRawText, setOcrRawText] = useState<string | undefined>(undefined);
   const [formError, setFormError] = useState<string | null>(null);
@@ -93,11 +118,12 @@ function NewAppointmentPageInner() {
 
   const sharedVisitFields = useMemo(
     () => ({
-      appointmentDate: appointmentDate ? new Date(appointmentDate).toISOString() : undefined,
+      appointmentDate: appointmentDate ? dateToIso(appointmentDate) : undefined,
+      nextAppointmentDate: nextAppointmentDate ? dateToIso(nextAppointmentDate) : undefined,
       notes: notes.trim() || undefined,
       ocrRawText,
     }),
-    [appointmentDate, notes, ocrRawText]
+    [appointmentDate, nextAppointmentDate, notes, ocrRawText]
   );
 
   async function handleSubmit(e: FormEvent) {
@@ -105,6 +131,19 @@ function NewAppointmentPageInner() {
     setFormError(null);
 
     try {
+      if (!appointmentDate) {
+        setFormError("Visit date is required.");
+        return;
+      }
+
+      // Both are "YYYY-MM-DD" here, so a plain string compare is a correct
+      // date compare — no parsing needed. The <input min> above already
+      // blocks this in the picker; this catches typed-in values.
+      if (nextAppointmentDate && nextAppointmentDate < appointmentDate) {
+        setFormError("The appointment date can't be before the visit date.");
+        return;
+      }
+
       if (target) {
         const { appointment } = await addAppointment.mutateAsync(sharedVisitFields);
         router.push(`/patients/${appointment.patientId}`);
@@ -244,11 +283,21 @@ function NewAppointmentPageInner() {
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Visit date">
+          <Field label="Visit date" required>
             <input
               type="date"
+              required
               value={appointmentDate}
               onChange={(e) => setAppointmentDate(e.target.value)}
+              className={INPUT_CLASS}
+            />
+          </Field>
+          <Field label="Appointment date">
+            <input
+              type="date"
+              min={appointmentDate || undefined}
+              value={nextAppointmentDate}
+              onChange={(e) => setNextAppointmentDate(e.target.value)}
               className={INPUT_CLASS}
             />
           </Field>

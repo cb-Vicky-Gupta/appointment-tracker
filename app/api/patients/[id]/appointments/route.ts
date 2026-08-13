@@ -27,13 +27,14 @@ export async function POST(
 
   const parsed = createAppointmentSchema.safeParse(body);
   if (!parsed.success) return validationError(parsed.error);
-  const { appointmentDate, notes, ocrRawText } = parsed.data;
+  const { appointmentDate, nextAppointmentDate, notes, ocrRawText } = parsed.data;
 
   const appointment = await prisma.$transaction(async (tx) => {
     const appointment = await tx.appointment.create({
       data: {
         patientId: patient.id,
         appointmentDate: appointmentDate ?? new Date(),
+        nextAppointmentDate,
         notes,
         ocrRawText,
       },

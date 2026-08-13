@@ -14,12 +14,14 @@ export interface NewPatientInput {
   email?: string;
   address?: string;
   appointmentDate?: string;
+  nextAppointmentDate?: string;
   notes?: string;
   ocrRawText?: string;
 }
 
 export interface NewAppointmentInput {
   appointmentDate?: string;
+  nextAppointmentDate?: string;
   notes?: string;
   ocrRawText?: string;
 }

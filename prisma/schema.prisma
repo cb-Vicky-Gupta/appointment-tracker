@@ -158,12 +158,27 @@ model Appointment {
   patientId String
   patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
-  appointmentDate DateTime
-  ocrRawText      String? // optional: keep raw OCR text for later debugging/re-parsing
+  // NOTE the naming: `appointmentDate` is the day this visit actually
+  // happened — the UI labels it "Visit date". It predates
+  // `nextAppointmentDate` and is left named as-is rather than renamed, since
+  // a rename would rewrite every existing row's column for a purely cosmetic
+  // gain.
+  appointmentDate     DateTime
+  // The follow-up the patient was booked for at the end of *this* visit —
+  // nullable because plenty of visits end with no next appointment (case
+  // closed, patient discharged, resident hasn't scheduled it yet). It is
+  // deliberately NOT its own Appointment row: nothing happened on that date
+  // yet, and materialising it as a visit would inflate visit counts and
+  // "last seen" dates with appointments the patient may never attend.
+  nextAppointmentDate DateTime?
+  ocrRawText          String? // optional: keep raw OCR text for later debugging/re-parsing
   // (the prescription image itself is never stored anywhere)
-  notes           String?
+  notes               String?
 
   createdAt DateTime @default(now())
 
   @@index([patientId])
+  // Powers "who am I expecting back, and when" lookups without scanning
+  // every visit ever logged.
+  @@index([nextAppointmentDate])
 }

@@ -9,7 +9,26 @@ import { toCsv } from "@/lib/csv";
 // limit, just a ceiling so this can't try to stream an unbounded result.
 const MAX_EXPORT_ROWS = 10_000;
 
-const HEADERS = ["patientName", "opdNo", "age", "phone", "appointmentDate", "notes", "loggedAt"];
+const HEADERS = [
+  "patientName",
+  "opdNo",
+  "age",
+  "phone",
+  "visitDate",
+  "appointmentDate",
+  "notes",
+];
+
+// dd-mm-yyyy, not an ISO timestamp: these are date-only values (both come
+// from an <input type="date">, stored as UTC midnight) and the file is read
+// by people, not machines. Read back in UTC for the same reason it's written
+// that way — anything local-timezone would shift the day.
+function formatDate(date: Date | null): string | null {
+  if (!date) return null;
+  const dd = String(date.getUTCDate()).padStart(2, "0");
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  return `${dd}-${mm}-${date.getUTCFullYear()}`;
+}
 
 // GET /api/patients/export?search= — every appointment across the caller's
 // own patients (Reference D: scoped to userId, same as every other patient/
@@ -52,9 +71,9 @@ export async function GET(req: NextRequest) {
       a.patient.opdNo,
       a.patient.age,
       a.patient.phone,
-      a.appointmentDate.toISOString(),
+      formatDate(a.appointmentDate),
+      formatDate(a.nextAppointmentDate),
       a.notes,
-      a.createdAt.toISOString(),
     ])
   );
 

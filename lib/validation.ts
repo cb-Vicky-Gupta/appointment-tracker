@@ -38,6 +38,11 @@ const emptyToUndefined = (v: unknown) =>
 const optionalTrimmedString = (max: number) =>
   z.preprocess(emptyToUndefined, z.string().trim().max(max).optional());
 
+// A cleared <input type="date"> posts "", and z.coerce.date() would turn that
+// into an Invalid Date rather than "not provided" — so it needs the same
+// empty-string handling the optional text fields get.
+const optionalDate = z.preprocess(emptyToUndefined, z.coerce.date().optional());
+
 // --- Signup (3-step: start -> verify-otp -> complete) ----------------------
 
 export const startSignupSchema = z.object({
@@ -155,14 +160,16 @@ export const createPatientSchema = z.object({
   phone: optionalTrimmedString(30),
   email: optionalEmail,
   address: optionalTrimmedString(500),
-  appointmentDate: z.coerce.date().optional(), // defaults to now in the route
+  appointmentDate: z.coerce.date().optional(), // the visit itself; defaults to now in the route
+  nextAppointmentDate: optionalDate, // the follow-up booked at this visit, if any
   notes: optionalTrimmedString(2000),
   ocrRawText: optionalTrimmedString(10000),
 });
 export type CreatePatientInput = z.infer<typeof createPatientSchema>;
 
 export const createAppointmentSchema = z.object({
-  appointmentDate: z.coerce.date().optional(), // defaults to now in the route
+  appointmentDate: z.coerce.date().optional(), // the visit itself; defaults to now in the route
+  nextAppointmentDate: optionalDate, // the follow-up booked at this visit, if any
   notes: optionalTrimmedString(2000),
   ocrRawText: optionalTrimmedString(10000),
 });

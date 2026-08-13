@@ -4,11 +4,15 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type { AppointmentRecord } from "@/lib/hooks/use-patient-detail";
 
+// Rendered in UTC to match how these date-only values are stored (see
+// dateToIso in the new-visit form) — without it, a visit saved as "13 Aug"
+// displays as the 12th for any viewer west of UTC.
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
     year: "numeric",
     month: "short",
     day: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -28,6 +32,13 @@ export function AppointmentEntry({
           </span>
         )}
       </div>
+
+      {appointment.nextAppointmentDate && (
+        <p className="mt-1 text-sm text-muted">
+          Next appointment:{" "}
+          <span className="text-text">{formatDateTime(appointment.nextAppointmentDate)}</span>
+        </p>
+      )}
 
       {appointment.notes ? (
         <p className="mt-2 text-sm text-text">{appointment.notes}</p>

@@ -83,8 +83,18 @@ export async function POST(req: NextRequest) {
 
   const parsed = createPatientSchema.safeParse(body);
   if (!parsed.success) return validationError(parsed.error);
-  const { name, opdNo, age, phone, email, address, appointmentDate, notes, ocrRawText } =
-    parsed.data;
+  const {
+    name,
+    opdNo,
+    age,
+    phone,
+    email,
+    address,
+    appointmentDate,
+    nextAppointmentDate,
+    notes,
+    ocrRawText,
+  } = parsed.data;
 
   // One OPD No. can't belong to two different patients for the same user
   // (enforced at the DB level too — @@unique([userId, opdNo]) — this is
@@ -107,6 +117,7 @@ export async function POST(req: NextRequest) {
         data: {
           patientId: patient.id,
           appointmentDate: appointmentDate ?? new Date(),
+          nextAppointmentDate,
           notes,
           ocrRawText,
         },

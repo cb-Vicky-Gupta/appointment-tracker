@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, Shield, ShieldOff } from "lucide-react";
+import { Download, Search, Shield, ShieldOff } from "lucide-react";
 import { useAdminUsers, type AdminUserListItem } from "@/lib/hooks/use-admin-users";
 import { useUpdateAdminUser } from "@/lib/hooks/use-admin-user-mutations";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { useCsvExport } from "@/lib/hooks/use-csv-export";
 import { Spinner } from "@/components/ui/Spinner";
 
 const PAGE_SIZE = 20;
@@ -22,12 +23,24 @@ export default function AdminUsersPage() {
 
   const { data, isLoading, isError, error } = useAdminUsers(search, page);
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
+  const csvExport = useCsvExport("/api/admin/users/export");
 
   return (
     <main className="flex flex-1 flex-col gap-6 px-6 py-10 md:px-10">
-      <div>
-        <h1 className="text-2xl font-semibold">Users</h1>
-        <p className="mt-1 text-sm text-muted">Every registered account, across every institute.</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Users</h1>
+          <p className="mt-1 text-sm text-muted">Every registered account, across every institute.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => csvExport.triggerExport(search)}
+          disabled={csvExport.exporting}
+          className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:border-primary disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Download className="h-4 w-4" />
+          {csvExport.exporting ? "Exporting…" : "Export CSV"}
+        </button>
       </div>
 
       <label className="relative block max-w-sm">
@@ -43,6 +56,8 @@ export default function AdminUsersPage() {
           className="w-full rounded-md border border-border bg-surface py-2 pl-9 pr-3 text-sm outline-none focus:border-primary"
         />
       </label>
+
+      {csvExport.error && <p className="text-sm text-danger">{csvExport.error}</p>}
 
       {isLoading && (
         <div className="flex flex-1 items-center justify-center py-16">

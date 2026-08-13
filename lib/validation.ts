@@ -117,6 +117,13 @@ export const adminUserListQuerySchema = z.object({
 });
 export type AdminUserListQuery = z.infer<typeof adminUserListQuerySchema>;
 
+// CSV export (Plan Phase D) — same search, deliberately no `page`: the
+// export is the full matching set in one file, not one page of it.
+export const adminUserExportQuerySchema = z.object({
+  search: z.string().trim().max(200).optional(),
+});
+export type AdminUserExportQuery = z.infer<typeof adminUserExportQuerySchema>;
+
 // Every field optional (a caller only sends the one action it's taking);
 // at least one must be present. `forceLogout` is a trigger, not a field to
 // persist — it's true-or-absent, never explicitly false.
@@ -176,3 +183,11 @@ export const appointmentListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
 });
 export type AppointmentListQuery = z.infer<typeof appointmentListQuerySchema>;
+
+// CSV export of the caller's own appointment log (their patients only,
+// Reference D) — same name/opdNo search as GET /api/patients, but
+// deliberately no `page`: the export is the whole matching set.
+export const appointmentExportQuerySchema = z.object({
+  search: z.string().trim().max(200).optional(),
+});
+export type AppointmentExportQuery = z.infer<typeof appointmentExportQuerySchema>;

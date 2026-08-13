@@ -6,13 +6,19 @@ import { LogOut, PanelLeftClose, PanelLeftOpen, Shield } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { PulseMark } from "@/components/icons/PulseMark";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
-import { ADMIN_ENTRY_LINK, type NavLink } from "@/components/layout/nav-links";
+import { ADMIN_NAV_LINKS, type NavLink } from "@/components/layout/nav-links";
 
 // The Phase 10 sidebar shell (PRD Reference G: sidebar-based dashboard
 // instead of a top-nav-only layout), generalized in Plan Phase C to also
 // back the admin panel's sidebar — `navLinks`/`homeHref` are what differ
 // between the two (components/layout/nav-links.tsx), everything else about
 // the shell (collapse, mobile drawer, logout) is shared via AppShell.
+//
+// An ADMIN-role account always gets ADMIN_NAV_LINKS here, regardless of
+// which `navLinks` its layout passed in — an admin isn't assumed to also be
+// a PG resident, so it never sees Dashboard/Patients (app/(dashboard)/layout.tsx
+// also redirects an admin away from those routes outright, this is just the
+// nav reflecting that same rule).
 //
 // Rendered twice per AppShell mount — once pinned in the desktop `<aside>`,
 // once inside the mobile slide-over drawer — so it takes an optional
@@ -23,17 +29,12 @@ import { ADMIN_ENTRY_LINK, type NavLink } from "@/components/layout/nav-links";
 export function Sidebar({
   navLinks,
   homeHref,
-  showAdminLink = false,
   onNavigate,
   collapsed = false,
   onToggleCollapse,
 }: Readonly<{
   navLinks: NavLink[];
   homeHref: string;
-  /** Appends an "Admin" link when the signed-in user is one — only the
-   *  regular dashboard sidebar passes this; the admin sidebar's own
-   *  ADMIN_NAV_LINKS already covers that section. */
-  showAdminLink?: boolean;
   onNavigate?: () => void;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -48,13 +49,14 @@ export function Sidebar({
     router.push("/login");
   }
 
-  const links = showAdminLink && user?.role === "ADMIN" ? [...navLinks, ADMIN_ENTRY_LINK] : navLinks;
+  const links = user?.role === "ADMIN" ? ADMIN_NAV_LINKS : navLinks;
+  const effectiveHomeHref = user?.role === "ADMIN" ? "/admin" : homeHref;
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-2 px-5 py-5">
         <Link
-          href={homeHref}
+          href={effectiveHomeHref}
           onClick={onNavigate}
           className="flex items-center gap-2.5 overflow-hidden"
         >

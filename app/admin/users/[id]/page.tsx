@@ -5,7 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
+  Eye,
   LogOut,
+  Search,
   Shield,
   ShieldOff,
   Trash2,
@@ -14,7 +16,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useAdminUserDetail } from "@/lib/hooks/use-admin-user-detail";
+import { useAdminUserPatients } from "@/lib/hooks/use-admin-user-patients";
 import { useUpdateAdminUser, useDeleteAdminUser } from "@/lib/hooks/use-admin-user-mutations";
+import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { Spinner } from "@/components/ui/Spinner";
 
 // Admin panel user detail (Plan Phase C). Auth-gating + chrome live in
@@ -93,6 +97,8 @@ export default function AdminUserDetailPage() {
               <Field label="Active sessions" value={String(data.user.activeSessionCount)} />
             </dl>
           </div>
+
+          <AdminUserPatients userId={data.user.id} />
 
           {isSelf ? (
             <p className="rounded-lg border border-border bg-surface p-6 text-sm text-muted">
@@ -209,6 +215,118 @@ function Field({
     <div className={className}>
       <dt className="text-xs text-muted">{label}</dt>
       <dd className="text-text">{value}</dd>
+    </div>
+  );
+}
+
+const PATIENTS_PAGE_SIZE = 20;
+
+// Read-only visibility into this user's own patient list — the thing the
+// admin nav-link fix (Sidebar) was really about: an admin never gets the
+// resident CRUD Patients page, but oversight/support still needs a way to
+// actually see this data, deliberately presented with no edit/add/delete
+// controls and no link out to the resident /patients/:id page (which would
+// 404 for anyone but the owning resident anyway).
+function AdminUserPatients({ userId }: Readonly<{ userId: string }>) {
+  const [searchInput, setSearchInput] = useState("");
+  const [page, setPage] = useState(1);
+  const search = useDebouncedValue(searchInput.trim(), 300);
+  const { data, isLoading, isError } = useAdminUserPatients(userId, search, page);
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / PATIENTS_PAGE_SIZE)) : 1;
+
+  return (
+    <div className="flex flex-col gap-4 rounded-lg border border-border bg-surface p-6">
+      <div>
+        <h2 className="flex items-center gap-1.5 text-sm font-medium text-muted">
+          <Eye className="h-4 w-4" />
+          Patients (view only)
+        </h2>
+        <p className="mt-0.5 text-xs text-muted">
+          Read-only — there&rsquo;s no add/edit/delete here, only the account-level actions below.
+        </p>
+      </div>
+
+      <label className="relative block max-w-sm">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+        <input
+          type="search"
+          placeholder="Search by name or OPD no."
+          value={searchInput}
+          onChange={(e) => {
+            setSearchInput(e.target.value);
+            setPage(1);
+          }}
+          className="w-full rounded-md border border-border bg-surface py-2 pl-9 pr-3 text-sm outline-none focus:border-primary"
+        />
+      </label>
+
+      {isLoading && (
+        <div className="flex items-center justify-center py-8">
+          <Spinner label="Loading patients…" />
+        </div>
+      )}
+
+      {isError && <p className="text-sm text-danger">Couldn&rsquo;t load this user&rsquo;s patients.</p>}
+
+      {data && data.patients.length === 0 && (
+        <p className="text-sm text-muted">
+          {search ? `No patients match "${search}".` : "This account has no patients logged."}
+        </p>
+      )}
+
+      {data && data.patients.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {data.patients.map((patient) => (
+            <div
+              key={patient.id}
+              className="flex items-center justify-between gap-4 rounded-md border border-border px-4 py-3"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{patient.name}</p>
+                <p className="mt-0.5 text-xs text-muted">
+                  OPD {patient.opdNo}
+                  {patient.age !== null ? ` · ${patient.age}y` : ""}
+                  {patient.phone ? ` · ${patient.phone}` : ""}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-col items-end text-xs">
+                <span className="text-text">
+                  {patient.lastVisitAt
+                    ? new Date(patient.lastVisitAt).toLocaleDateString()
+                    : "No visits yet"}
+                </span>
+                <span className="text-muted">
+                  {patient.visitCount} visit{patient.visitCount === 1 ? "" : "s"}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {data && data.total > PATIENTS_PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm">
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="cursor-pointer rounded-md border border-border px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <span className="text-muted">
+            Page {page} of {totalPages}
+          </span>
+          <button
+            type="button"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            className="cursor-pointer rounded-md border border-border px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 }

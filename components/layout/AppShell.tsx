@@ -18,13 +18,11 @@ export function AppShell({
   ready,
   navLinks,
   homeHref,
-  showAdminLink = false,
   children,
 }: Readonly<{
   ready: boolean;
   navLinks: NavLink[];
   homeHref: string;
-  showAdminLink?: boolean;
   children: ReactNode;
 }>) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -70,7 +68,6 @@ export function AppShell({
         <Sidebar
           navLinks={navLinks}
           homeHref={homeHref}
-          showAdminLink={showAdminLink}
           collapsed={collapsed}
           onToggleCollapse={toggleCollapsed}
         />
@@ -88,7 +85,6 @@ export function AppShell({
             <Sidebar
               navLinks={navLinks}
               homeHref={homeHref}
-              showAdminLink={showAdminLink}
               onNavigate={() => setMobileNavOpen(false)}
             />
           </aside>

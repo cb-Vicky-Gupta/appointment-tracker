@@ -14,15 +14,16 @@ export const DASHBOARD_NAV_LINKS: NavLink[] = [
   { href: "/profile", label: "Profile", icon: UserCircle },
 ];
 
-// The admin panel's own sidebar (Plan Phase C) — deliberately doesn't
-// include Patients/Profile; an admin returns to those via the "Ilazdoot"
-// brand link (AppShell's `homeHref`), not a duplicated nav entry.
+// The admin panel's sidebar — and, per Sidebar's role check, the *only*
+// nav an ADMIN-role account ever sees, in either section. An admin
+// account isn't assumed to also be a PG resident, so it deliberately
+// doesn't include Dashboard/Patients — those pages assume "your own
+// patient log", which an admin-only account has none of. Any patient data
+// an admin needs to inspect is surfaced read-only inside /admin/users/:id
+// instead (never the resident CRUD pages — see PatientCard's Link target,
+// which 404s for anyone but the owning resident by design).
 export const ADMIN_NAV_LINKS: NavLink[] = [
   { href: "/admin", label: "Overview", icon: Shield },
   { href: "/admin/users", label: "Users", icon: ClipboardList },
+  { href: "/profile", label: "Profile", icon: UserCircle },
 ];
-
-// The single extra entry appended to the *regular* sidebar for admins
-// (Sidebar's `showAdminLink`) — distinct label from ADMIN_NAV_LINKS[0]
-// ("Admin" here vs "Overview" there) since the context differs.
-export const ADMIN_ENTRY_LINK: NavLink = { href: "/admin", label: "Admin", icon: Shield };
